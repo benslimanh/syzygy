@@ -1,0 +1,50 @@
+groups:
+  - name: syzygy.rules
+    rules:
+      - alert: SyzygyDown
+        expr: up{job="syzygy"} == 0
+        for: 1m
+        labels:   { severity: critical }
+        annotations:
+          summary: "syzygy instance {{ $labels.instance }} down"
+          description: "Targets in job syzygy are unreachable for >1m."
+
+      - alert: SyzygyHighErrorRate
+        expr: |
+          sum by (instance) (
+             rate(syzygy_requests_total{status=~"5.."}[5m])
+          ) / sum by (instance) (rate(syzygy_requests_total[5m])) > 0.05
+        for: 5m
+        labels:   { severity: warning }
+        annotations:
+          summary: "syzygy 5xx rate >5% on {{ $labels.instance }}"
+
+      - alert: SyzygyCircuitBreakerTripped
+        expr: increase(syzygy_circuit_breaker_trips[5m]) > 0
+        for: 1m
+        labels:   { severity: warning }
+        annotations:
+          summary: "syzygy circuit breaker tripping on {{ $labels.instance }}"
+
+      - alert: SyzygyHighCacheMiss
+        expr: |
+          sum(rate(syzygy_cache_misses[5m]))
+          / (sum(rate(syzygy_cache_hits[5m])) + sum(rate(syzygy_cache_misses[5m]))) > 0.8
+        for: 10m
+        labels: { severity: info }
+        annotations:
+          summary: "syzygy cache miss ratio >80%"
+
+      - alert: SyzygyLogDrops
+        expr: increase(syzygy_log_drops[5m]) > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "syzygy dropping log records"
+
+      - alert: SyzygySaturation
+        expr: syzygy_active_connections > 5000
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "syzygy active connections high on {{ $labels.instance }}"

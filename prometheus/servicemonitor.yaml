@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: syzygy
+  namespace: monitoring
+  labels: {release: prometheus}
+spec:
+  selector: {matchLabels: {app: syzygy}}
+  namespaceSelector: {matchNames: [syzygy]}
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 5s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syzygy-metrics
+  namespace: syzygy
+  labels: {app: syzygy}
+spec:
+  selector: {app: syzygy}
+  ports:
+  - {name: http, port: 8080, targetPort: http, protocol: TCP}
