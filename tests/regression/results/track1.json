@@ -1,0 +1,198 @@
+{
+  "results": [
+    {
+      "id": "T1-S01",
+      "name": "reverse proxy sends only the request it built (no stack bytes)",
+      "defect": "S-01 stack buffer over-read, src/proxy.c:342",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S14",
+      "name": "access log never records more bytes than the line buffer holds",
+      "defect": "S-14 unchecked snprintf return -> stack over-read into the log, src/log.c:157",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S13",
+      "name": "ETag is well formed and If-None-Match yields 304",
+      "defect": "S-13 uninitialised ETag buffer, src/response.c:238",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S02a",
+      "name": "admin API is closed when no token is configured",
+      "defect": "S-02 admin API fails open, src/admin.c:64-68",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S02b",
+      "name": "admin API still answers with a token, 401 without one",
+      "defect": "S-02 (control: the fix must not break the authorised path)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03a",
+      "name": "duplicate identical Content-Length is rejected (400)",
+      "defect": "S-03 framing leniency -> smuggling, src/parser.c:192",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03b",
+      "name": "conflicting Content-Length does not hang or get served",
+      "defect": "S-03 (H1-033: the connection hung forever)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03c",
+      "name": "comma-separated Content-Length (\"5, 5\") is rejected",
+      "defect": "S-03 (H1-035: served as 200)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03d",
+      "name": "Transfer-Encoding: xchunked is rejected, not treated as chunked",
+      "defect": "S-03 (H1-038: served as 200)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03e",
+      "name": "Transfer-Encoding + Content-Length is rejected",
+      "defect": "S-03: classic CL.TE / TE.CL smuggling primitive",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03f",
+      "name": "Content-Length above the body limit is rejected with 413",
+      "defect": "S-03 (H1-036: a 10-digit Content-Length was served as 200)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S03g",
+      "name": "malformed chunk framing is rejected with 400",
+      "defect": "S-03 (H1-039/H1-041: no response at all)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S04a",
+      "name": "Connection: close still returns the response",
+      "defect": "S-04 response discarded, src/conn.c:666",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S04b",
+      "name": "HTTP/1.0 request is answered and the connection closes",
+      "defect": "S-04 (H1-081: zero bytes returned)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S04c",
+      "name": "a 400 raised by the parser is actually delivered",
+      "defect": "S-04 (H1-083: zero bytes returned)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S04d",
+      "name": "keep-alive connections stay usable after the fix",
+      "defect": "S-04 (control: no regression in the normal path)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S05a",
+      "name": "a half-sent request header times out",
+      "defect": "S-05 no header timeout, slowloris pins a worker slot forever",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S05b",
+      "name": "an idle keep-alive connection is reclaimed",
+      "defect": "S-05 idle connections never expire",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S05c",
+      "name": "a TCP connection that never starts the TLS handshake is dropped",
+      "defect": "S-05 TLS handshake has no timeout",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S05d",
+      "name": "a slow-drip header attack is cut off",
+      "defect": "S-05 slowloris: one byte per second keeps a connection alive indefinitely",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S06a",
+      "name": "DELETE is not served as GET",
+      "defect": "S-06 methods fall through to the static handler, src/conn.c:390",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-S06b",
+      "name": "PUT is not served as GET",
+      "defect": "S-06 (same root cause as S-06a)",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-C02",
+      "name": "all four byte-range forms are interpreted per RFC 9110",
+      "defect": "C-02 suffix and open-ended ranges, src/parser.c:158",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    },
+    {
+      "id": "T1-C01",
+      "name": "three pipelined requests get three responses",
+      "defect": "C-01 pipelined bytes are only parsed when new data arrives, src/conn.c:266",
+      "status": "pass",
+      "detail": "",
+      "trace": ""
+    }
+  ],
+  "generated": "2026-11-01T18:05:05Z",
+  "binary_sha256": "08b2ce4cc8c5c4d350d43f539bfa447c0197dc924865babd90aa222bb073a518"
+}
