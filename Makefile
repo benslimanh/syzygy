@@ -71,7 +71,7 @@ TEST_BIN  := tests/parser_test
 FUZZ_BIN  := fuzz/parser_fuzz
 MODULE_SO := modules/hello.so modules/modsec_real.so modules/jwt_auth.so
 
-.PHONY: all test fuzz repro static sbom mod hardening-check clean run-demo certs
+.PHONY: all test fuzz repro static sbom mod hardening-check clean install run-demo certs
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -209,3 +209,14 @@ run-demo: certs/cert.pem all
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO)
+
+PREFIX  ?= /usr/local
+BINDIR  ?= $(PREFIX)/bin
+DESTDIR ?=
+
+install: $(BIN)
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 0755 $(BIN) $(DESTDIR)$(BINDIR)/$(BIN)
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/$(BIN)
