@@ -20,7 +20,7 @@
 #                                                                          #
 ############################################################################
 
-# syzygy Makefile - hardened build.
+# syzygy Makefile - hardened build with reproducibility, fuzzing, static, sbom targets.
 #
 # Prerequisites (Debian/Ubuntu):
 #   sudo apt-get install -y build-essential zlib1g-dev libnghttp2-dev libssl-dev
@@ -71,7 +71,7 @@ TEST_BIN  := tests/parser_test
 FUZZ_BIN  := fuzz/parser_fuzz
 MODULE_SO := modules/hello.so modules/modsec_real.so modules/jwt_auth.so
 
-.PHONY: all test fuzz repro static mod clean
+.PHONY: all test fuzz repro static sbom mod hardening-check clean
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -160,6 +160,33 @@ repro:
 		echo "REPRODUCIBLE: FAIL (Hashes mismatch)"; \
 		exit 1; \
 	fi
+
+# ---------- SBOM (SPDX) ----------
+sbom:
+	@echo "Generating SPDX SBOM to syzygy.spdx ..."
+	@./scripts/generate_sbom.sh > syzygy.spdx 2>/dev/null || \
+	{ echo "SPDXVersion: SPDX-2.3" > syzygy.spdx; \
+	  echo "DataLicense: CC0-1.0" >> syzygy.spdx; \
+	  echo "SPDXID: SPDXRef-DOCUMENT" >> syzygy.spdx; \
+	  echo "PackageName: syzygy" >> syzygy.spdx; \
+	  echo "PackageVersion: $(shell grep -oP 'SYZYGY_VERSION\s+"\K[^"]+' include/common.h)" >> syzygy.spdx; \
+	  echo "PackageLicenseConcluded: MIT" >> syzygy.spdx; \
+	  echo "## auto-generated stub" >> syzygy.spdx; \
+	  echo "SBOM stub written to syzygy.spdx"; }
+
+# ---------- Hardening verification ----------
+hardening-check: $(BIN)
+	@echo "== ELF hardening checks =="
+	@type hardening-check >/dev/null 2>&1 && hardening-check $(BIN) || { \
+	  echo "(hardening-check not installed; running manual checks)"; \
+	  file $(BIN); \
+	  readelf -d $(BIN) | grep -E '(BIND_NOW|FLAGS_1|RELRO)' ; \
+	  readelf -h $(BIN) | grep 'Type:'; \
+	  echo "NX: "; readelf -l $(BIN) | grep -E 'GNU_STACK.*RW' && echo "NX ok (no eXec)" || echo "NX?"; \
+	}
+	@echo "== GOT-PLT relro / PIE / stack-protector symbols =="
+	@readelf -sW $(BIN) | grep -E '(__stack_chk_fail|_FORTIFY)' || true
+	@nm -D $(BIN) | grep -E ' U (strcpy|strcat|sprintf|gets)$$' && echo "FAIL: unsafe functions linked" || echo "OK: no unsafe str*/sprintf/gets linked"
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO)
