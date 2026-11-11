@@ -58,11 +58,11 @@ ifneq ($(wildcard mbedtls/library/libmbedtls.a),)
               $(MBED_LIBDIR)/libmbedcrypto.a -lnghttp2 -lssl -lcrypto -lz -ldl -lpthread
 endif
 
-SRCS := src/util.c src/path.c src/arena.c src/ringbuf.c \
-        src/log.c src/metrics.c src/cache.c src/gzip_etag.c \
-        src/parser.c src/response.c src/tls.c src/h2.c \
-        src/proxy.c src/module.c src/modapi.c src/subrequester.c \
-        src/conn.c src/admin.c
+SRCS := src/util.c src/path.c src/arena.c src/ringbuf.c src/log.c \
+        src/metrics.c src/cache.c src/gzip_etag.c src/parser.c \
+        src/response.c src/tls.c src/h2.c src/proxy.c src/module.c \
+        src/modapi.c src/subrequester.c src/conn.c src/worker.c src/server.c \
+        src/admin.c
 OBJS := $(SRCS:.c=.o)
 DEPS := $(SRCS:.c=.d)
 
