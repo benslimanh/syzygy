@@ -60,7 +60,8 @@ endif
 
 SRCS := src/util.c src/path.c src/arena.c src/ringbuf.c \
         src/log.c src/metrics.c src/cache.c src/gzip_etag.c \
-        src/parser.c src/response.c src/tls.c src/h2.c
+        src/parser.c src/response.c src/tls.c src/h2.c \
+        src/conn.c
 OBJS := $(SRCS:.c=.o)
 DEPS := $(SRCS:.c=.d)
 
