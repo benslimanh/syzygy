@@ -90,9 +90,12 @@ $(TEST_BIN): tests/parser_test.o src/parser.o src/util.o src/path.o src/gzip_eta
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lssl -lcrypto
 
 # ---------- Module ----------
-mod: $(MODULE_SO) modules/modsec_stub.so
+mod: $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so
 
 modules/hello.so: modules/hello.c
+	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
+
+modules/extauthz_opa.so: modules/extauthz_opa.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
 
 modules/modsec_stub.so: modules/modsec_stub.c
