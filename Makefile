@@ -68,9 +68,10 @@ DEPS := $(SRCS:.c=.d)
 
 BIN       := syzygy
 TEST_BIN  := tests/parser_test
+FUZZ_BIN  := fuzz/parser_fuzz
 MODULE_SO := modules/hello.so modules/modsec_real.so modules/jwt_auth.so
 
-.PHONY: all test mod clean
+.PHONY: all test fuzz mod clean
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -88,6 +89,15 @@ test: $(TEST_BIN)
 $(TEST_BIN): tests/parser_test.o src/parser.o src/util.o src/path.o src/gzip_etag.o src/metrics.o src/log.o src/ringbuf.o src/arena.o src/cache.o
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl $(MBED_LIBDIR)/libmbedtls.a $(MBED_LIBDIR)/libmbedx509.a $(MBED_LIBDIR)/libmbedcrypto.a -lssl -lcrypto 2>/dev/null || \
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lssl -lcrypto
+
+# ---------- Fuzz ----------
+fuzz: CC=clang
+fuzz: CFLAGS += -fsanitize=address,fuzzer,undefined -fno-sanitize-recover=all
+fuzz: $(FUZZ_BIN)
+
+$(FUZZ_BIN): fuzz/parser_fuzz.c src/parser.c src/util.c
+	$(CC) $(CSTD) -O1 -g -Iinclude -D_GNU_SOURCE -fsanitize=address,fuzzer,undefined \
+	      -o $@ $^ -lz
 
 # ---------- Module ----------
 mod: $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so modules/proxy_wasm.so
@@ -124,4 +134,4 @@ modules/proxy_wasm.so: modules/proxy_wasm.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include $(WASM_CFLAGS) -o $@ $< -ldl $(WASM_LDFLAGS)
 
 clean:
-	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(MODULE_SO)
+	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO)
