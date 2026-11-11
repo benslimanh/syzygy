@@ -68,7 +68,7 @@ DEPS := $(SRCS:.c=.d)
 
 BIN       := syzygy
 TEST_BIN  := tests/parser_test
-MODULE_SO := modules/hello.so modules/jwt_auth.so
+MODULE_SO := modules/hello.so modules/modsec_real.so modules/jwt_auth.so
 
 .PHONY: all test mod clean
 all: $(BIN)
@@ -90,10 +90,23 @@ $(TEST_BIN): tests/parser_test.o src/parser.o src/util.o src/path.o src/gzip_eta
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lssl -lcrypto
 
 # ---------- Module ----------
-mod: $(MODULE_SO)
+mod: $(MODULE_SO) modules/modsec_stub.so
 
 modules/hello.so: modules/hello.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
+
+modules/modsec_stub.so: modules/modsec_stub.c
+	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
+
+# Real ModSecurity WAF: C++ linkage against libmodsecurity
+CXX      ?= g++
+CXXSTD   ?= -std=c++17
+CXXFLAGS_MOD := $(OPT) -fPIC -shared -fno-plt -fstack-protector-strong \
+                -D_FORTIFY_SOURCE=3 -fstack-clash-protection \
+                -Iinclude -I./mbedtls/include
+MODSEC_LDLIBS := $(shell pkg-config --libs modsecurity 2>/dev/null || echo "-lmodsecurity") -lstdc++
+modules/modsec_real.so: modules/modsec_real.cpp
+	$(CXX) $(CXXSTD) $(CXXFLAGS_MOD) -o $@ $< $(MODSEC_LDLIBS)
 
 modules/jwt_auth.so: modules/jwt_auth.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< $(MBED_LIBDIR)/libmbedtls.a $(MBED_LIBDIR)/libmbedx509.a $(MBED_LIBDIR)/libmbedcrypto.a -ldl
