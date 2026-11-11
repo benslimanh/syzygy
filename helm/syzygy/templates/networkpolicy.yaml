@@ -1,0 +1,18 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "syzygy.fullname" . }}
+  labels: {{- include "syzygy.labels" . | nindent 4 }}
+spec:
+  podSelector: {matchLabels: {{- include "syzygy.selectorLabels" . | nindent 6 }}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+  - ports:
+    - {port: 8080, protocol: TCP}
+    - {port: 8443, protocol: TCP}
+  egress:
+  - ports:
+    - {port: 53, protocol: UDP}
+    - {port: 53, protocol: TCP}
+{{- end }}

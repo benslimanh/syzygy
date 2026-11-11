@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syzygy
+  namespace: syzygy
+  labels: {app: syzygy}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: syzygy}}
+  template:
+    metadata:
+      labels: {app: syzygy}
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: runtime/default
+        container.apparmor.security.beta.kubernetes.io/syzygy: runtime/default
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+      - name: syzygy
+        image: ghcr.io/example/syzygy:latest
+        imagePullPolicy: IfNotPresent
+        args: ["-p","8080","-T","8443","-C","/certs/cert.pem","-K","/certs/key.pem","-r","/www","-w","0"]
+        ports:
+        - {name: http,  containerPort: 8080, protocol: TCP}
+        - {name: https, containerPort: 8443, protocol: TCP}
+        readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2, timeoutSeconds: 1}
+        livenessProbe:  {httpGet: {path: /healthz, port: http}, periodSeconds: 10, timeoutSeconds: 2}
+        resources:
+          requests: {cpu: "50m", memory: "64Mi"}
+          limits:   {cpu: "1",    memory: "256Mi"}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: {drop: ["ALL"]}
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          privileged: false
+        volumeMounts:
+        - {name: certs, mountPath: /certs, readOnly: true}
+        - {name: tmp,   mountPath: /tmp}
+      volumes:
+      - name: certs
+        secret: {secretName: syzygy-tls}
+      - name: tmp
+        emptyDir: {medium: Memory, sizeLimit: 8Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syzygy
+  namespace: syzygy
+spec:
+  selector: {app: syzygy}
+  ports:
+  - {name: http,  port: 80,  targetPort: http,  protocol: TCP}
+  - {name: https, port: 443, targetPort: https, protocol: TCP}
+  type: ClusterIP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: syzygy, namespace: syzygy}
+spec: {minAvailable: 2, selector: {matchLabels: {app: syzygy}}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: syzygy, namespace: syzygy}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: syzygy}
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource: {name: cpu, target: {type: Utilization, averageUtilization: 65}}
+  - type: Resource
+    resource: {name: memory, target: {type: Utilization, averageUtilization: 70}}
