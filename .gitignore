@@ -1,0 +1,44 @@
+
+# Build artifacts
+
+syzygy
+
+*.o
+
+*.d
+
+*.so
+
+tests/parser_test
+
+fuzz/parser_fuzz
+
+mbedtls/build/
+
+certs/*.pem
+
+compile_commands.json
+
+clangd-cache/
+
+*.gcda
+
+*.gcno
+
+*.gcov
+
+coverage/
+
+
+
+# Temporary test outputs
+
+*.log
+
+
+
+# Editor / OS junk
+
+*~
+
+.DS_Store
