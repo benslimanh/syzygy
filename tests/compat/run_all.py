@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import harness  # noqa: E402
 import test_h1  # noqa: F401,E402  (registers cases)
+import test_h2  # noqa: F401,E402
 
 
 def main():
