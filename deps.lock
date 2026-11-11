@@ -1,0 +1,13 @@
+# deps.lock - pinned dependency set for syzygy 0.1.0
+# Consumed by dist/build.sh; a mismatch aborts the build unless --allow-drift.
+# Refresh deliberately, with a CHANGELOG entry, never implicitly.
+
+# Vendored TLS (git submodule of github.com/Mbed-TLS/mbedtls, tag v3.6.2)
+mbedtls_commit=107ea89daaefb9867ea9121002fbbdf926780e98
+
+# Toolchain
+gcc_major=14
+
+# Distro libraries (Debian 13 / trixie package versions at time of release)
+nghttp2=1.64.0
+openssl=3.5.7
