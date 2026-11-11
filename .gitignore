@@ -42,3 +42,19 @@ coverage/
 *~
 
 .DS_Store
+
+
+
+# SSL Certificates and Keys
+
+*.pem
+
+*.key
+
+*.crt
+
+*.cer
+
+*.p12
+
+*.pfx
