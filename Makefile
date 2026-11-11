@@ -71,7 +71,7 @@ TEST_BIN  := tests/parser_test
 FUZZ_BIN  := fuzz/parser_fuzz
 MODULE_SO := modules/hello.so modules/modsec_real.so modules/jwt_auth.so
 
-.PHONY: all test fuzz repro static sbom mod hardening-check clean
+.PHONY: all test fuzz repro static sbom mod hardening-check clean run-demo certs
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -187,6 +187,25 @@ hardening-check: $(BIN)
 	@echo "== GOT-PLT relro / PIE / stack-protector symbols =="
 	@readelf -sW $(BIN) | grep -E '(__stack_chk_fail|_FORTIFY)' || true
 	@nm -D $(BIN) | grep -E ' U (strcpy|strcat|sprintf|gets)$$' && echo "FAIL: unsafe functions linked" || echo "OK: no unsafe str*/sprintf/gets linked"
+
+# ---------- Demo cert ----------
+certs/cert.pem certs/key.pem: certs
+	openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+		-keyout certs/key.pem -out certs/cert.pem \
+		-subj "/C=MA/ST=TTA/L=Tangier/O=syzygy/CN=localhost" \
+		-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+certs:
+	@mkdir -p certs
+	@if [ ! -f certs/cert.pem ] || [ ! -f certs/key.pem ]; then \
+		openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+			-keyout certs/key.pem -out certs/cert.pem \
+			-subj "/C=MA/ST=TTA/L=Tangier/O=syzygy/CN=localhost" \
+			-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"; \
+	fi
+
+run-demo: certs/cert.pem all
+	./$(BIN) -p 8080 -T 8443 -C certs/cert.pem -K certs/key.pem -r ./www -w 0
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO)
