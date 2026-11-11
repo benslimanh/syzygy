@@ -59,7 +59,7 @@ ifneq ($(wildcard mbedtls/library/libmbedtls.a),)
 endif
 
 SRCS := src/util.c src/arena.c src/ringbuf.c src/log.c \
-        src/cache.c
+        src/metrics.c src/cache.c
 OBJS := $(SRCS:.c=.o)
 DEPS := $(SRCS:.c=.d)
 
