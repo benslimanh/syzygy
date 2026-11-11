@@ -90,7 +90,7 @@ $(TEST_BIN): tests/parser_test.o src/parser.o src/util.o src/path.o src/gzip_eta
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lssl -lcrypto
 
 # ---------- Module ----------
-mod: $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so
+mod: $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so modules/proxy_wasm.so
 
 modules/hello.so: modules/hello.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
@@ -113,6 +113,15 @@ modules/modsec_real.so: modules/modsec_real.cpp
 
 modules/jwt_auth.so: modules/jwt_auth.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< $(MBED_LIBDIR)/libmbedtls.a $(MBED_LIBDIR)/libmbedx509.a $(MBED_LIBDIR)/libmbedcrypto.a -ldl
+
+# proxy-wasm module: needs WAMR. If WASMRT is set, builds with full support;
+# otherwise builds a stub that fails at load time with a helpful message.
+ifneq ($(WASMRT),)
+  WASM_CFLAGS  := -DHAS_WAMR=1 -I$(WASMRT)/core/iwasm/include -I$(WASMRT)/core/shared/utils
+  WASM_LDFLAGS := -L$(WASMRT)/build -lvmlib -luv -lpthread -lm
+endif
+modules/proxy_wasm.so: modules/proxy_wasm.c
+	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include $(WASM_CFLAGS) -o $@ $< -ldl $(WASM_LDFLAGS)
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(MODULE_SO)
