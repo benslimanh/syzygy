@@ -68,8 +68,9 @@ DEPS := $(SRCS:.c=.d)
 
 BIN       := syzygy
 TEST_BIN  := tests/parser_test
+MODULE_SO := modules/hello.so
 
-.PHONY: all test clean
+.PHONY: all test mod clean
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -88,5 +89,11 @@ $(TEST_BIN): tests/parser_test.o src/parser.o src/util.o src/path.o src/gzip_eta
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl $(MBED_LIBDIR)/libmbedtls.a $(MBED_LIBDIR)/libmbedx509.a $(MBED_LIBDIR)/libmbedcrypto.a -lssl -lcrypto 2>/dev/null || \
 	$(CC) $(CSTD) $(WARN) -O0 -g -Iinclude -I./mbedtls/include -D_GNU_SOURCE -o $@ $^ -lz -lpthread -ldl -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lssl -lcrypto
 
+# ---------- Module ----------
+mod: $(MODULE_SO)
+
+modules/hello.so: modules/hello.c
+	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
+
 clean:
-	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN)
+	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(MODULE_SO)
