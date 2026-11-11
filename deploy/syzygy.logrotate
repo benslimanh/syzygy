@@ -1,0 +1,21 @@
+/var/log/syzygy/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    dateext
+    # 100 MB cap per file
+    size 100M
+    postrotate
+        # Ask syzygy parent (and all children via pgrep -f) to reopen logs.
+        # systemctl reload sends SIGHUP; we use SIGUSR1 for log reopen.
+        if [ -x /bin/systemctl ]; then
+            /bin/systemctl kill -s SIGUSR1 syzygy.service >/dev/null 2>&1 || true
+        else
+            /usr/bin/pkill -USR1 -x syzygy >/dev/null 2>&1 || true
+        fi
+    endscript
+}

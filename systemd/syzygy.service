@@ -1,0 +1,16 @@
+[Unit]
+Description=Syzygy High-Performance Web Server
+After=network.target
+
+[Service]
+Type=simple
+# Start as root to bind privileged ports (<1024) and read SSL keys.
+# Syzygy automatically drops privileges to the 'nobody' user after binding.
+ExecStart=/usr/local/bin/syzygy -p 80 -T 443 -C /etc/syzygy/ssl/server.crt -K /etc/syzygy/ssl/server.key -r /var/www/syzygy -w 4 -l /var/log/syzygy/error.log
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-abnormal
+LimitNOFILE=65536
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
