@@ -68,7 +68,7 @@ DEPS := $(SRCS:.c=.d)
 
 BIN       := syzygy
 TEST_BIN  := tests/parser_test
-MODULE_SO := modules/hello.so
+MODULE_SO := modules/hello.so modules/jwt_auth.so
 
 .PHONY: all test mod clean
 all: $(BIN)
@@ -94,6 +94,9 @@ mod: $(MODULE_SO)
 
 modules/hello.so: modules/hello.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< -ldl
+
+modules/jwt_auth.so: modules/jwt_auth.c
+	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include -o $@ $< $(MBED_LIBDIR)/libmbedtls.a $(MBED_LIBDIR)/libmbedx509.a $(MBED_LIBDIR)/libmbedcrypto.a -ldl
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(MODULE_SO)
