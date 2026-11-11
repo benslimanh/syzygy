@@ -71,7 +71,7 @@ TEST_BIN  := tests/parser_test
 FUZZ_BIN  := fuzz/parser_fuzz
 MODULE_SO := modules/hello.so modules/modsec_real.so modules/jwt_auth.so
 
-.PHONY: all test fuzz mod clean
+.PHONY: all test fuzz repro static mod clean
 all: $(BIN)
 
 $(BIN): $(OBJS)
@@ -132,6 +132,34 @@ ifneq ($(WASMRT),)
 endif
 modules/proxy_wasm.so: modules/proxy_wasm.c
 	$(CC) $(CSTD) $(OPT) -fPIC -shared -Iinclude -I./mbedtls/include $(WASM_CFLAGS) -o $@ $< -ldl $(WASM_LDFLAGS)
+
+# ---------- Static / distroless binary ----------
+static: CFLAGS  += -static
+static: LDFLAGS := -Wl,-z,relro,-z,now -Wl,-z,noexecstack
+static: LDLIBS   := -Wl,-Bstatic $(MBED_LIBDIR)/libmbedtls.a $(MBED_LIBDIR)/libmbedx509.a \
+                    $(MBED_LIBDIR)/libmbedcrypto.a -lnghttp2 -lz -ldl -lpthread -l:libssl.a -l:libcrypto.a -Wl,-Bdynamic
+static: clean $(BIN)
+
+# ---------- Reproducibility ----------
+repro:
+	@echo "==> Running Build 1..."
+	@SOURCE_DATE_EPOCH=1700000000 $(MAKE) clean all >/dev/null 2>&1; \
+	T1=$$(sha256sum $(BIN) 2>/dev/null | awk '{print $$1}'); \
+	sleep 1; \
+	echo "==> Running Build 2..."; \
+	SOURCE_DATE_EPOCH=1700000000 $(MAKE) clean all >/dev/null 2>&1; \
+	T2=$$(sha256sum $(BIN) 2>/dev/null | awk '{print $$1}'); \
+	echo "build1: $$T1"; \
+	echo "build2: $$T2"; \
+	if [ -z "$$T1" ] || [ -z "$$T2" ]; then \
+		echo "REPRODUCIBLE: FAIL (Build process failed)"; \
+		exit 1; \
+	elif [ "$$T1" = "$$T2" ]; then \
+		echo "REPRODUCIBLE: OK"; \
+	else \
+		echo "REPRODUCIBLE: FAIL (Hashes mismatch)"; \
+		exit 1; \
+	fi
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO)
