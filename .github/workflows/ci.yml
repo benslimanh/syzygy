@@ -60,3 +60,22 @@ jobs:
 
       - name: repro
         run: make repro
+
+  module-build:
+    name: Build sample module
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive 
+          
+      - name: Install deps
+        run: |
+          sudo apt-get update 
+          sudo apt-get install -y build-essential libnghttp2-dev libmodsecurity-dev
+          
+      - name: Build mbedTLS
+        run: make -C mbedtls CFLAGS="-O2 -fPIC" lib
+
+      - name: Build Modules
+        run: make mod
