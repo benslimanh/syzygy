@@ -95,6 +95,8 @@ int http_request_parse(http_request_t *req, const char *buf, size_t len,
         return SYZYGY_RC_AGAIN;
     }
 
+    if ((size_t)(end_of_headers - begin) > SYZYGY_MAX_HEADER_SZ) return -1;
+
     const char *line0_end = find_crlf(begin, end_of_headers);
     if (!line0_end) return -1;
 
@@ -146,11 +148,24 @@ int http_request_parse(http_request_t *req, const char *buf, size_t len,
             p = le + 2; break;
         }
         const char *colon = memchr(p, ':', (size_t)(le - p));
-        if (!colon) { p = le + 2; continue; }
+        /* Never silently discard a header: downstream framing and policy
+         * checks must see exactly the same fields as the peer. */
+        if (!colon || colon == p || req->nheaders >= SYZYGY_MAX_HEADERS) return -1;
+        for (const char *k = p; k < colon; k++) {
+            unsigned char ch = (unsigned char)*k;
+            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') || strchr("!#$%&'*+-.^_`|~", ch)))
+                return -1;
+            if (ch == 0) return -1;
+        }
+        for (const char *k = colon + 1; k < le; k++) {
+            unsigned char ch = (unsigned char)*k;
+            if ((ch < 0x20 && ch != '\t') || ch == 0x7f) return -1;
+        }
         const char *vstart = colon + 1;
-        while (vstart < le && *vstart == ' ') vstart++;
+        while (vstart < le && (*vstart == ' ' || *vstart == '\t')) vstart++;
         const char *vend = le;
-        while (vend > vstart && vend[-1] == ' ') vend--;
+        while (vend > vstart && (vend[-1] == ' ' || vend[-1] == '\t')) vend--;
         if (req->nheaders < SYZYGY_MAX_HEADERS) {
             http_header_t *h = &req->headers[req->nheaders++];
             h->name = p; h->name_len = (size_t)(colon - p);
