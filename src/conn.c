@@ -692,6 +692,17 @@ void conn_on_readable(conn_t *c)
             consumed = c->req_consumed;
         } else {
             pr = http_request_parse(&c->req, (const char*)c->rbuf, c->rbuf_len, &consumed);
+            if (pr == SYZYGY_OK && c->req.body_kind != SYZYGY_BODY_NONE) {
+                /* Body collection compacts rbuf. Keep header views stable for
+                 * authentication modules and admin routing until request reset. */
+                for (size_t i = 0; i < c->req.nheaders; i++) {
+                    http_header_t *h = &c->req.headers[i];
+                    const char *name = arena_strndup(&c->arena, h->name, h->name_len);
+                    const char *value = arena_strndup(&c->arena, h->value, h->value_len);
+                    if (!name || !value) { c->want_close = true; return; }
+                    h->name = name; h->value = value;
+                }
+            }
         }
         if (pr == SYZYGY_RC_AGAIN) break;  /* need more bytes */
         if (pr == SYZYGY_ERR)  {           /* malformed request line/headers */
@@ -795,6 +806,10 @@ void conn_on_readable(conn_t *c)
                 if (after_hdrs < c->rbuf_len)
                     memmove(c->rbuf, (const char*)((const char*)(c->rbuf + after_hdrs)), c->rbuf_len - after_hdrs);
                 c->rbuf_len -= after_hdrs;
+                /* Offsets are relative to the compacted buffer on the next
+                 * read. Retaining the old offset underflows avail and can
+                 * make body collection read beyond the received bytes. */
+                c->req_consumed = 0;
                 /* Avoid keeping a huge parsed flag while waiting for body */
                 if (c->rbuf_len == 0) c->rbuf_parsed = 0;
                 break;

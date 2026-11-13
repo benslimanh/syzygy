@@ -346,7 +346,7 @@ int http_request_chunked_feed(http_request_t *req, const char *buf, size_t len,
         if (req->chunk_state == 0) {
             /* find CRLF */
             const char *crlf = (const char*)memmem(buf + i, len - i, "\r\n", 2);
-            if (!crlf) { (void)SYZYGY_CHUNK_BUF; return 0; } /* need more */
+            if (!crlf) { *consumed = i; return 0; } /* need more */
             size_t sl = (size_t)(crlf - (buf + i));
             /* parse hex up to ';' or \r */
             size_t cs = 0; bool ok = true;
@@ -381,7 +381,7 @@ int http_request_chunked_feed(http_request_t *req, const char *buf, size_t len,
             }
             if (req->chunk_remaining == 0) {
                 /* Need trailing \r\n */
-                if (len - i < 2) return 0;
+                if (len - i < 2) { *consumed = i; return 0; }
                 if (buf[i] != '\r' || buf[i+1] != '\n') return -1;
                 i += 2;
                 req->chunk_state = 0;
@@ -389,7 +389,7 @@ int http_request_chunked_feed(http_request_t *req, const char *buf, size_t len,
         } else if (req->chunk_state == 2) {
             /* Trailers: skip all lines until blank \r\n */
             const char *crlf = (const char*)memmem(buf + i, len - i, "\r\n", 2);
-            if (!crlf) return 0;
+            if (!crlf) { *consumed = i; return 0; }
             if (crlf == buf + i) { i += 2; *consumed = i; *done = true; return 0; }
             i = (size_t)(crlf - buf) + 2;
         }
