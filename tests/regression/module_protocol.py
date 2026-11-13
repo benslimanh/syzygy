@@ -19,14 +19,28 @@ from h2.connection import H2Connection
 from h2.events import ResponseReceived
 
 
+class TLSHandshakeRejected(Exception):
+    """The peer rejected TLS before any application request was sent."""
+
+
 def status(protocols, token=None):
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     ctx.set_alpn_protocols(protocols)
-    with ctx.wrap_socket(socket.create_connection(('127.0.0.1', HTTPS_PORT), 3),
-                         server_hostname='localhost') as s:
+    with (
+        socket.create_connection(('127.0.0.1', HTTPS_PORT), 3) as tcp,
+        ctx.wrap_socket(tcp, server_hostname='localhost',
+                        do_handshake_on_connect=False) as s,
+    ):
         s.settimeout(3)
+        try:
+            s.do_handshake()
+        except ssl.SSLError as e:
+            # OpenSSL/Python versions do not consistently name the ALPN
+            # alert. Classify only handshake errors, not later I/O errors.
+            # TCP errors and timeouts must still fail the test.
+            raise TLSHandshakeRejected(str(e)) from e
         proto = s.selected_alpn_protocol()
         if proto == 'h2':
             c = H2Connection(config=H2Configuration(client_side=True, header_encoding='utf-8'))
@@ -73,8 +87,11 @@ def main():
             try:
                 proto, code = status(protocols, credential)
                 ok = code == expected
-            except ssl.SSLError as e:
-                if expected is not None or e.reason != 'TLSV1_ALERT_NO_APPLICATION_PROTOCOL':
+            except TLSHandshakeRejected:
+                # Only the H2-only offer is expected to fail its handshake.
+                # The successful H1/mixed offers and valid JWT are controls
+                # against an unavailable or generally broken TLS server.
+                if protocols != ['h2'] or expected is not None:
                     raise
                 proto, code, ok = 'rejected', None, True
             print(f'{"PASS" if ok else "FAIL"} ALPN={protocols} negotiated={proto} status={code} expected={expected}')
