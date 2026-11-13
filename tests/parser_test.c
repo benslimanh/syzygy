@@ -173,6 +173,38 @@ static void test_header_limits(void)
            "accept tab OWS around header value");
 }
 
+static void test_open_descriptor_is_pinned(void)
+{
+    char tmp[] = "/tmp/syzygy-fd-XXXXXX";
+    char *root = mkdtemp(tmp);
+    EXPECT(root != NULL, "create path fixture");
+    if (!root) return;
+    char original[SYZYGY_PATH_MAX], moved[SYZYGY_PATH_MAX], out[SYZYGY_PATH_MAX];
+    snprintf(original, sizeof original, "%s/file", root);
+    snprintf(moved, sizeof moved, "%s/moved", root);
+    int fixture = open(original, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    EXPECT(fixture >= 0, "create confined file");
+    if (fixture < 0) { rmdir(root); return; }
+    EXPECT(write(fixture, "safe", 4) == 4, "write confined file");
+    close(fixture);
+    struct stat st;
+    bool isdir = true;
+    int fd = safe_open_path(root, "/file", 5, out, sizeof out, &st, &isdir);
+    EXPECT(fd >= 0 && !isdir && st.st_size == 4, "open validated descriptor");
+    EXPECT(rename(original, moved) == 0, "replace path after validation");
+    EXPECT(symlink("/etc/passwd", original) == 0, "install racing leaf symlink");
+    if (fd >= 0) {
+        char buf[4];
+        EXPECT(read(fd, buf, sizeof buf) == 4 && !memcmp(buf, "safe", 4),
+               "pinned descriptor does not follow replaced pathname");
+        close(fd);
+    }
+    fd = safe_open_path(root, "/file", 5, out, sizeof out, &st, &isdir);
+    EXPECT(fd < 0, "new lookup rejects replaced symlink");
+    if (fd >= 0) close(fd);
+    unlink(original); unlink(moved); rmdir(root);
+}
+
 int main(void)
 {
     fprintf(stderr, "== parser_test ==\n");
@@ -183,6 +215,7 @@ int main(void)
     test_query();
     test_range();
     test_header_limits();
+    test_open_descriptor_is_pinned();
     fprintf(stderr, "\n%s: %d failure(s)\n", failures ? "FAIL" : "PASS", failures);
     return failures ? 1 : 0;
 }

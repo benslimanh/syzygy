@@ -273,7 +273,9 @@ const char *http_status_text(http_status_t s);
 const char *http_method_str(http_method_t m);
 const char *content_type_for(const char *path, size_t plen);
 
-/* path confinement */
+/* path confinement: safe_open_path returns an owned fd, or -1. */
+int safe_open_path(const char *root, const char *uri_path, size_t uri_plen,
+                   char *out, size_t out_sz, struct stat *st_out, bool *is_dir);
 int safe_resolve_path(const char *root, const char *uri_path, size_t uri_plen,
                       char *out, size_t out_sz, struct stat *st_out, bool *is_dir);
 

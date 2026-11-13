@@ -225,9 +225,11 @@ the same position nginx or HAProxy are usually in. What it has going for it:
 2. It doesn't have to run as root. See sections 2 and 7.
 3. Every worker is its own process with its own listening socket. A crash in
    one of them doesn't touch the others, and the parent replaces it.
-4. All file access goes through `safe_resolve_path()`, which rejects `..` and
-   opens files with `openat(O_NOFOLLOW)` followed by `fstat`. Symlinks that
-   point out of the document root are not served.
+4. Static file access goes through `safe_open_path()`, which rejects `..`,
+   walks each URI component with `openat(O_NOFOLLOW)`, and serves the same
+   descriptor validated by `fstat`. URI symlinks are not served. Hard links
+   and files deliberately placed inside the root are the administrator's
+   responsibility.
 5. Request data lives in a per-connection arena that is reset between
    requests.
 6. Request bodies are capped at 1 MiB and answered with 413 above that. The

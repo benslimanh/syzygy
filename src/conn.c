@@ -547,9 +547,11 @@ int serve_request_on_conn(conn_t *c)
     /* Static file */
     char fs[SYZYGY_PATH_MAX];
     struct stat st; bool isdir = false;
-    if (safe_resolve_path(g_cfg.www_dir, req->path, req->path_len,
-                          fs, sizeof fs, &st, &isdir) == 0) {
+    int fd = safe_open_path(g_cfg.www_dir, req->path, req->path_len,
+                            fs, sizeof fs, &st, &isdir);
+    if (fd >= 0) {
         if (isdir) {
+            close(fd);
             response_error(resp, HTTP_403, "forbidden");
         } else {
             char ckey[SYZYGY_MAX_URI + 64];
@@ -559,6 +561,7 @@ int serve_request_on_conn(conn_t *c)
                            req->path, dogz ? "gzip" : "");
             const cache_entry_t *ce = g_cfg.enable_cache ? cache_get(&g_cache, ckey) : NULL;
             if (ce) {
+                close(fd);
                 if (g_metrics) g_metrics->cache_hits++;
                 response_set_status(resp, (http_status_t)ce->status);
                 response_set_content_type(resp, ce->content_type);
@@ -570,7 +573,7 @@ int serve_request_on_conn(conn_t *c)
                 goto emit;
             }
             if (g_metrics) g_metrics->cache_misses++;
-            response_serve_file(resp, fs, &st, false, req);
+            if (response_serve_file(resp, fd, fs, &st, false, req) < 0) return -1;
             if (g_cfg.enable_cache && resp->status == HTTP_200 && !resp->head_only
                 && resp->tail && resp->tail->kind == SLICE_BUF) {
                 cache_put(&g_cache, ckey, resp->status, resp->content_type, resp->etag,
