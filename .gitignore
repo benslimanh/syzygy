@@ -58,3 +58,7 @@ coverage/
 *.p12
 
 *.pfx
+
+# Python test caches and local environments
+__pycache__/
+.venv/

@@ -167,6 +167,8 @@ make test                          # parser unit tests
 bash tests/security_fixes.sh       # regression script for past security bugs
 python3 tests/compat/run_all.py    # HTTP/1.1, HTTP/2 and TLS cases
 python3 tests/regression/track1.py
+python3 tests/regression/path_confinement.py
+python3 tests/regression/module_protocol.py # needs modules/jwt_auth.so
 python3 tests/sanitizers/soak.py --duration 60 --workers 2
 ./tests/fuzz/run_campaign.sh       # libFuzzer + ASan/UBSan, needs clang
 ```
@@ -200,6 +202,9 @@ machine, so take them as a rough idea and not more.
 - The prior oversized-header defect (`H1-029`) is fixed. The bad-preface
   test (`H2-020`) now correctly recognizes a connection close after the
   initial server SETTINGS frame.
+
+The local security review and validation scope are documented in
+[docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md).
 
 ## Deployment
 

@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential zlib1g-dev libnghttp2-dev \
-               libssl-dev devscripts cppcheck nghttp2-client curl
+               libssl-dev devscripts cppcheck nghttp2-client curl python3-venv
 
       - name: Build mbedTLS
         run: make -C mbedtls CFLAGS="-O2 -fPIC" lib
@@ -31,6 +31,16 @@ jobs:
 
       - name: Unit tests
         run: make test
+
+      - name: Protocol and security regressions
+        run: |
+          make certs modules/jwt_auth.so
+          python3 -m venv .venv
+          .venv/bin/pip install 'h2>=4.2,<5'
+          .venv/bin/python tests/compat/run_all.py
+          .venv/bin/python tests/regression/track1.py
+          .venv/bin/python tests/regression/path_confinement.py
+          .venv/bin/python tests/regression/module_protocol.py
 
       - name: Hardening check
         run: make hardening-check
