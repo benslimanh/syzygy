@@ -96,7 +96,7 @@ fuzz: CFLAGS += -fsanitize=address,fuzzer,undefined -fno-sanitize-recover=all
 fuzz: $(FUZZ_BIN)
 
 $(FUZZ_BIN): fuzz/parser_fuzz.c src/parser.c src/util.c
-	$(CC) $(CSTD) -O1 -g -Iinclude -D_GNU_SOURCE -fsanitize=address,fuzzer,undefined \
+	$(CC) $(CSTD) -O1 -g $(INC) -D_GNU_SOURCE -fsanitize=address,fuzzer,undefined \
 	      -o $@ $^ -lz
 
 # ---------- Module ----------

@@ -27,13 +27,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include "../src/parser.c"
+#include "common.h"
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    http_request_t req;
-    http_request_reset(&req);
+    http_request_t req = {0};
     size_t consumed = 0;
     http_request_parse(&req, (const char*)data, size, &consumed);
+    http_request_reset(&req);
     return 0;
 }
