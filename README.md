@@ -109,6 +109,10 @@ Modules are shared objects loaded with `-M path.so:config`. They talk to the
 server through a small versioned ABI (`include/syzygy_hooks.h`). `make mod`
 builds the ones in `modules/`:
 
+**Protocol policy:** when any `-m` or `-M` module is configured, TLS only
+advertises HTTP/1.1. HTTP/2 does not yet run module hooks, so enabling it
+would bypass authentication and WAF policies. H2-only clients are rejected.
+
 - `jwt_auth` checks a Bearer JWT: HS256/384/512 with a shared secret, RS and
   ES algorithms with a public key, plus `exp`, `nbf` and `iss`. Config keys
   are `secret_hex=`, `pubkey_pem=`, `iss=` and `skip_path=`.
@@ -191,9 +195,11 @@ machine, so take them as a rough idea and not more.
   before trusting either the good or the bad numbers.
 - `/_admin/` is not routed on HTTP/2 connections and returns 404 there. Use
   HTTP/1.1 for it (`curl --http1.1`).
-- Two compat cases fail at the moment: `H1-029` (a single 32 KiB header line
-  is accepted) and `H2-020` (a bad connection preface is not answered with
-  GOAWAY or a close).
+- HTTP/2 module hooks are not implemented. With modules configured the
+  server restricts ALPN to HTTP/1.1 to prevent policy bypass.
+- The prior oversized-header defect (`H1-029`) is fixed. The bad-preface
+  test (`H2-020`) now correctly recognizes a connection close after the
+  initial server SETTINGS frame.
 
 ## Deployment
 

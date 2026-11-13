@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Prevent HTTP/2 from bypassing authentication/WAF modules by restricting
+  TLS ALPN to HTTP/1.1 whenever any module is configured.
+
 - Reject oversized header blocks, excess headers, and malformed header syntax.
 - Confine static-file lookups using directory-relative, no-symlink opens and
   retain validated descriptors through HTTP/1.1 and HTTP/2 file serving.
