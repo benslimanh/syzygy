@@ -25,7 +25,7 @@
 # Prerequisites (Debian/Ubuntu):
 #   sudo apt-get install -y build-essential zlib1g-dev libnghttp2-dev libssl-dev
 # Vendor mbedTLS in-tree (recommended for fully static / pinned TLS):
-#   git clone --depth 1 --recurse-submodules --shallow-submodules -b v3.6.2 \
+#   git clone --depth 1 --recurse-submodules --shallow-submodules -b v3.6.7 \
 #       https://github.com/Mbed-TLS/mbedtls.git mbedtls
 #   make -C mbedtls CFLAGS="-O2 -fPIC" lib
 #

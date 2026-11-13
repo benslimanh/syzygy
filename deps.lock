@@ -2,8 +2,8 @@
 # Consumed by dist/build.sh; a mismatch aborts the build unless --allow-drift.
 # Refresh deliberately, with a CHANGELOG entry, never implicitly.
 
-# Vendored TLS (git submodule of github.com/Mbed-TLS/mbedtls, tag v3.6.2)
-mbedtls_commit=107ea89daaefb9867ea9121002fbbdf926780e98
+# Vendored TLS (git submodule of github.com/Mbed-TLS/mbedtls, tag v3.6.7)
+mbedtls_commit=068ff080b369adfac81509f9b57b2afabaf82dc5
 
 # Toolchain
 gcc_major=14

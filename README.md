@@ -18,7 +18,7 @@ is pinned against.
 sudo apt-get install -y build-essential zlib1g-dev libnghttp2-dev libssl-dev
 ```
 
-mbedTLS is a git submodule pinned to v3.6.2. Build it once, then build syzygy:
+mbedTLS is a git submodule pinned to v3.6.7. Build it once, then build syzygy:
 
 ```bash
 git submodule update --init --recursive

@@ -220,7 +220,7 @@ step after the build.
 syzygy can listen on 80 and 443 itself, with nothing in front of it. That is
 the same position nginx or HAProxy are usually in. What it has going for it:
 
-1. TLS is terminated in the process by mbedTLS v3.6.2. `-3` limits it to TLS
+1. TLS is terminated in the process by mbedTLS v3.6.7. `-3` limits it to TLS
    1.3.
 2. It doesn't have to run as root. See sections 2 and 7.
 3. Every worker is its own process with its own listening socket. A crash in
