@@ -235,11 +235,12 @@ static int dir_listing(http_response_t *r, const char *fs_path)
     return response_add_buf(r, bdup, (size_t)n);
 }
 
-int response_serve_file(http_response_t *r, const char *fs_path,
+int response_serve_file(http_response_t *r, int fd, const char *fs_path,
                         const struct stat *st, bool is_dir,
                         const http_request_t *req)
 {
     if (is_dir) {
+        close(fd);
         /* Directory without index: forbid */
         return response_error(r, HTTP_403, "directory listing restricted");
     }
@@ -258,8 +259,10 @@ int response_serve_file(http_response_t *r, const char *fs_path,
             start = req->range_start;
             end = req->range_end > 0 ? req->range_end : fsize - 1;
         }
-        if (start >= fsize || end < start)
+        if (start >= fsize || end < start) {
+            close(fd);
             return response_error(r, HTTP_416, "range not satisfiable");
+        }
         do_range = true;
     }
 
@@ -271,14 +274,13 @@ int response_serve_file(http_response_t *r, const char *fs_path,
     etag_for(st, etag, sizeof etag);
     response_set_etag(r, etag);
     if (req->has_if_none_match && etag_match(req->if_none_match, etag)) {
+        close(fd);
         r->status = HTTP_304;
         r->has_body = false;
         r->total_len = 0;
         return 0;
     }
 
-    int fd = open(fs_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) return response_error(r, HTTP_404, "not found");
 
     const char *ct = content_type_for(fs_path, strlen(fs_path));
     response_set_content_type(r, ct);
@@ -313,7 +315,12 @@ int response_serve_file(http_response_t *r, const char *fs_path,
     r->total_len = len;
 
     if (!r->head_only) {
-        response_add_file(r, fd, start, len);
+        if (response_add_file(r, fd, start, len) < 0) {
+            close(fd);
+            return -1;
+        }
+    } else {
+        close(fd);
     }
     return 0;
 }

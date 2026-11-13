@@ -568,3 +568,41 @@ def h1_083():
     buf = raw(b"POST /ok.txt HTTP/1.1\r\nHost: l\r\nTransfer-Encoding: chunked\r\n\r\nZZ\r\n")
     st, _, _ = parse_response(buf)
     check(st == 400, f"400 never reached the client (got {buf[:40]!r})")
+
+
+def _fragmented_admin_body(framing, pieces):
+    """Force multiple read callbacks, preserving auth headers and body offsets."""
+    with socket.create_connection(('127.0.0.1', HTTP_PORT), 2) as s:
+        s.settimeout(2)
+        s.sendall(b'POST /_admin/cache-purge HTTP/1.1\r\nHost: l\r\n' +
+                  f'Authorization: Bearer {ADMIN_TOKEN}\r\n'.encode() + framing + b'\r\n')
+        time.sleep(.05)
+        for piece in pieces:
+            s.sendall(piece)
+            time.sleep(.05)
+        data = b''
+        while b'\r\n\r\n' not in data:
+            part = s.recv(4096)
+            check(bool(part), 'connection closed during fragmented body')
+            data += part
+        status, _, _ = parse_response(data)
+        expect_eq(status, 200, 'fragmented authenticated body')
+        s.sendall(b'GET /ok.txt HTTP/1.1\r\nHost: l\r\nConnection: close\r\n\r\n')
+        follow = b''
+        while True:
+            part = s.recv(4096)
+            if not part:
+                break
+            follow += part
+        expect_eq(parse_response(follow)[0], 200, 'follow-up request remains synchronized')
+
+
+@case('H1-084', 'fragmented Content-Length body preserves offsets and auth headers', 'h1', 'critical')
+def h1_084():
+    _fragmented_admin_body(b'Content-Length: 6\r\n', [b'ab', b'cd', b'ef'])
+
+
+@case('H1-085', 'fragmented chunked body preserves offsets and auth headers', 'h1', 'critical')
+def h1_085():
+    _fragmented_admin_body(b'Transfer-Encoding: chunked\r\n',
+                           [b'3\r\n', b'abc', b'\r', b'\n0\r\n', b'\r\n'])

@@ -301,16 +301,15 @@ static int on_frame_recv(nghttp2_session *s, const nghttp2_frame *frame, void *u
     bool has_body_fd = false; size_t file_total = 0;
     int resp_status = HTTP_404;
 
-    int rc __attribute__((unused)) =
-        safe_resolve_path(g_cfg.www_dir, path, plen, fs, sizeof fs, &stbuf, &isdir);
-    if (rc == 0) {
+    int fd = safe_open_path(g_cfg.www_dir, path, plen, fs, sizeof fs, &stbuf, &isdir);
+    if (fd >= 0) {
         if (!isdir && S_ISREG(stbuf.st_mode)) {
             etag_for(&stbuf, etag, sizeof etag);
             bool hit304 = st->has_inm && etag_match(st->inm, etag);
             if (hit304) {
+                close(fd);
                 resp_status = HTTP_304;
             } else {
-                int fd = open(fs, O_RDONLY|O_NONBLOCK|O_CLOEXEC);
                 if (fd >= 0) {
                     const char *ct = content_type_for(fs, strlen(fs));
                     snprintf(ctype, sizeof ctype, "%s", ct);
@@ -351,6 +350,7 @@ static int on_frame_recv(nghttp2_session *s, const nghttp2_frame *frame, void *u
                 }
             }
         } else {
+            close(fd);
             resp_status = HTTP_403;
             body = (const uint8_t*)"forbidden"; blen = 9; file_total = 9;
         }

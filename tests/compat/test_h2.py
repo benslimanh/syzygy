@@ -62,6 +62,7 @@ class H2Raw:
     """Raw HTTP/2 client: full control over frames, no library validation."""
 
     def __init__(self, preface=True, settings=True):
+        self.closed = False
         self.s = _tls()
         self.s.settimeout(2.0)
         if preface:
@@ -92,8 +93,10 @@ class H2Raw:
             except (socket.timeout, TimeoutError):
                 break
             except (ConnectionResetError, ssl.SSLError, OSError):
+                self.closed = True
                 break
             if not chunk:
+                self.closed = True
                 break
             buf += chunk
         return out
@@ -260,7 +263,7 @@ def h2_020():
     try:
         c.send(b"NOT-A-PREFACE\r\n\r\n")
         frames = c.recv_frames(1.5)
-        check(is_closed(frames) or not frames, f"expected close/GOAWAY, got {[f[0] for f in frames]}")
+        check(c.closed or is_closed(frames), f"expected close/GOAWAY, got {[f[0] for f in frames]}")
     finally:
         c.close()
 
@@ -438,6 +441,10 @@ def h2_035():
          f"https://127.0.0.1:{HTTPS_PORT}/ok.txt"],
         capture_output=True, text=True, timeout=120, env=env)
     out = r.stdout + r.stderr
-    if "failed: 0" not in out:
-        raise Fail("h2load reported failures (sustained HTTP/2 load stalls existing "
-                   f"connections — see bench/RESULTS.md): {out[-300:]}")
+    import re
+    counters = re.search(
+        r"requests: (\d+) total, (\d+) started, (\d+) done, (\d+) succeeded, "
+        r"(\d+) failed, (\d+) errored, (\d+) timeout", out)
+    check(r.returncode == 0 and counters is not None and
+          tuple(map(int, counters.groups())) == (2000, 2000, 2000, 2000, 0, 0, 0),
+          f"h2load did not complete 2000 successful requests: {out}")
