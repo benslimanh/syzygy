@@ -33,9 +33,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 COPY . /src/
 
-# Vendor mbedTLS v3.6.2 pinned via checksum-less shallow clone; reproducible
-RUN git clone --depth 1 --recurse-submodules --shallow-submodules -b v3.6.2 \
+# Vendor the release and verify the immutable commit used by deps.lock.
+RUN git clone --depth 1 --recurse-submodules --shallow-submodules -b v3.6.7 \
         https://github.com/Mbed-TLS/mbedtls.git mbedtls \
+    && test "$(git -C mbedtls rev-parse HEAD)" = "068ff080b369adfac81509f9b57b2afabaf82dc5" \
     && make -C mbedtls CFLAGS="-O2 -fPIC -D_FORTIFY_SOURCE=3" lib \
     && make -j"$(nproc)" static
 

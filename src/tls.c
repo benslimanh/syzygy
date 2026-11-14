@@ -40,6 +40,7 @@ static bool                   g_tls_ready = false;
  * mbedTLS takes char** (not const), so we deliberately use non-const
  * pointers pointing at string literals which mbedTLS does not modify. */
 static const char *g_alpn_protos[] = { "h2", "http/1.1", NULL };
+static const char *g_alpn_http1[] = { "http/1.1", NULL };
 
 int tls_init(const char *cert, const char *key, bool tls13_only,
              const char *ciphers, const char *ciphersuites)
@@ -101,7 +102,12 @@ int tls_init(const char *cert, const char *key, bool tls13_only,
         mbedtls_ssl_conf_min_version(&g_ssl_conf, MBEDTLS_SSL_MAJOR_VERSION_3,
                                      MBEDTLS_SSL_MINOR_VERSION_3); /* TLS 1.2+ */
     }
-    mbedtls_ssl_conf_alpn_protocols(&g_ssl_conf, g_alpn_protos);
+    /* HTTP/2 dispatch does not run module hooks yet. Do not let clients
+     * bypass authentication/WAF policy by selecting another protocol.
+     * With modules configured, negotiate HTTP/1.1 or reject H2-only clients
+     * until H2 has equivalent hooks. */
+    mbedtls_ssl_conf_alpn_protocols(&g_ssl_conf,
+        (g_cfg.nmodules || g_cfg.nv1modules) ? g_alpn_http1 : g_alpn_protos);
     g_tls_ready = true;
     return 0;
 

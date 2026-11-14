@@ -203,12 +203,13 @@ hdr=$(curl -sk --http1.1 --max-time 3 -I "https://127.0.0.1:$TLS_PORT/ok.txt")
 echo "$hdr" | grep -qi 'content-length: 3' && cl_ok=1 || cl_ok=0
 [ "$cl_ok" = 1 ] && ok "H1 TLS HEAD CL=3" || bad "H1 TLS HEAD missing/bad CL"
 
-say "T15 H1 TLS /index.html -> 200, 1223 bytes"
+index_size=$(wc -c < "$ROOT/www/index.html" | tr -d ' ')
+say "T15 H1 TLS /index.html -> 200, $index_size bytes"
 code=$(curl -sk --http1.1 -o /tmp/sal-tls-idx -w "%{http_code}" --max-time 5 \
     "https://127.0.0.1:$TLS_PORT/index.html")
 sz=$(wc -c < /tmp/sal-tls-idx | tr -d ' ')
 [ "$code" = "200" ] && ok "H1 TLS index.html 200" || bad "H1 TLS index.html code=$code"
-[ "$sz" = "1223" ] && ok "H1 TLS index.html size=1223" || bad "H1 TLS index.html size=$sz"
+[ "$sz" = "$index_size" ] && cmp -s /tmp/sal-tls-idx "$ROOT/www/index.html" && ok "H1 TLS index.html matches fixture" || bad "H1 TLS index.html size=$sz"
 
 say "T16 H1 TLS 10x sequential keepalive"
 fail=0
@@ -255,12 +256,12 @@ echo "$hdr" | grep -qi "content-range: bytes 0-1/3" && cr_ok=1 || cr_ok=0
 [ "$got" = "2" ] && ok "H2 range 2 bytes" || bad "H2 range expected 2 got $got"
 [ "$cr_ok" = 1 ] && ok "H2 Content-Range present" || bad "H2 missing Content-Range"
 
-say "T22 H2 /index.html -> 200, 1223 bytes"
+say "T22 H2 /index.html -> 200, $index_size bytes"
 code=$(curl -sk --http2 -o /tmp/sal-h2-idx -w "%{http_code}" --max-time 5 \
     "https://127.0.0.1:$TLS_PORT/index.html")
 sz=$(wc -c < /tmp/sal-h2-idx | tr -d ' ')
 [ "$code" = "200" ] && ok "H2 index.html 200" || bad "H2 index.html code=$code"
-[ "$sz" = "1223" ] && ok "H2 index.html size=1223" || bad "H2 index.html size=$sz"
+[ "$sz" = "$index_size" ] && cmp -s /tmp/sal-h2-idx "$ROOT/www/index.html" && ok "H2 index.html matches fixture" || bad "H2 index.html size=$sz"
 
 say "T23 H2 security headers present (HSTS, X-Content-Type-Options, etc.)"
 hdr=$(curl -sk --http2 -I --max-time 3 "https://127.0.0.1:$TLS_PORT/ok.txt")

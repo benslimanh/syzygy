@@ -20,132 +20,97 @@
  *                                                                         *
  ***************************************************************************/
 
-/*
- * path.c - safe_resolve_path: join a request URI path with a document root
- * while blocking traversal (".."), null bytes, symlinks outside root,
- * and overly long components. Returns the open fd for the resolved file
- * via a path string + stat. We never strcat/sprintf; we use bounded
- * memcpy and explicit length checks.
- *
- * Root-confinement guarantee: after building the candidate path we
- *  1. lstat() every final path component (no symlinks followed);
- *  2. for directory-index candidates we use openat() with O_NOFOLLOW
- *     relative to an fd on the *resolved* directory, then verify with
- *     fstat() that the target is a regular file -- this prevents a
- *     symlinked or hardlinked index file from escaping the document
- *     root even when the index is inside a chroot/race.
+/* Resolve relative to pinned directory descriptors. Every URI component is
+ * opened with O_NOFOLLOW; callers serve the returned descriptor instead of
+ * re-opening a pathname after validation. The output path is metadata only.
+ * Hard links and files deliberately placed in the root remain administrator
+ * responsibilities; O_NOFOLLOW is a symlink policy, not a hard-link sandbox.
  */
 #include "common.h"
 
 static const char *index_files[] = { "index.html", "index.htm", NULL };
 
-/* Open a file inside dirfd using O_NOFOLLOW so a symlink at the leaf
- * fails with ELOOP. Returns fd on success, -1 on failure. */
-static int openat_nofollow(int dirfd, const char *name)
+int safe_open_path(const char *root, const char *uri_path, size_t uri_plen,
+                   char *out, size_t out_sz, struct stat *st_out, bool *is_dir)
 {
-    return openat(dirfd, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (!root || !uri_path || !out || out_sz < SYZYGY_PATH_MAX ||
+        !uri_plen || uri_path[0] != '/') return -1;
+    size_t root_len = strnlen(root, SYZYGY_PATH_MAX);
+    if (!root_len || root_len >= SYZYGY_PATH_MAX - 8) return -1;
+    memcpy(out, root, root_len);
+    if (out[root_len - 1] != '/') out[root_len++] = '/';
+    size_t pos = root_len;
+    out[pos] = '\0';
+
+    /* The configured root is trusted; never follow URI-supplied symlinks. */
+    int fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0) return -1;
+    struct stat st;
+    size_t i = 1;
+    while (i < uri_plen) {
+        if (uri_path[i] == '/') { i++; continue; }
+        size_t start = i;
+        while (i < uri_plen && uri_path[i] != '/') {
+            unsigned char ch = (unsigned char)uri_path[i];
+            if (ch < 0x20 || ch == 0x7f || ch == '\\' ||
+                (ch == '%' && i + 2 < uri_plen &&
+                 uri_path[i+1] == '0' && uri_path[i+2] == '0')) goto fail;
+            i++;
+        }
+        size_t n = i - start;
+        if (n > 255 || (n == 1 && uri_path[start] == '.') ||
+            (n == 2 && uri_path[start] == '.' && uri_path[start+1] == '.')) goto fail;
+        char name[256];
+        memcpy(name, uri_path + start, n); name[n] = '\0';
+        size_t next = i;
+        while (next < uri_plen && uri_path[next] == '/') next++;
+        int flags = O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC;
+        if (next < uri_plen || i < uri_plen) flags |= O_DIRECTORY;
+        int child = openat(fd, name, flags);
+        if (child < 0) goto fail;
+        close(fd); fd = child;
+        if (pos > root_len) {
+            if (pos + 1 >= out_sz) goto fail;
+            out[pos++] = '/';
+        }
+        if (pos + n >= out_sz) goto fail;
+        memcpy(out + pos, name, n); pos += n; out[pos] = '\0';
+        i = next;
+    }
+    if (fstat(fd, &st) < 0) goto fail;
+    if (S_ISDIR(st.st_mode)) {
+        for (int j = 0; index_files[j]; j++) {
+            size_t n = strlen(index_files[j]);
+            if (pos + 1 + n >= out_sz) continue;
+            int idx = openat(fd, index_files[j],
+                             O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+            if (idx < 0) continue;
+            struct stat ist;
+            if (fstat(idx, &ist) == 0 && S_ISREG(ist.st_mode)) {
+                close(fd); fd = idx; st = ist;
+                out[pos++] = '/';
+                memcpy(out + pos, index_files[j], n + 1);
+                break;
+            }
+            close(idx);
+        }
+    }
+    if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) goto fail;
+    if (st_out) *st_out = st;
+    if (is_dir) *is_dir = S_ISDIR(st.st_mode);
+    return fd;
+fail:
+    close(fd);
+    return -1;
 }
 
+/* Metadata-only compatibility helper for tests and fuzzers. Serving code
+ * must use safe_open_path and retain its descriptor through transmission. */
 int safe_resolve_path(const char *root, const char *uri_path, size_t uri_plen,
                       char *out, size_t out_sz, struct stat *st_out, bool *is_dir)
 {
-    if (!root || !uri_path || !out || out_sz < SYZYGY_PATH_MAX) return -1;
-
-    size_t root_len = strnlen(root, SYZYGY_PATH_MAX - 1);
-    if (root_len == 0 || root_len >= SYZYGY_PATH_MAX - 8) return -1;
-
-    /* Normalize root: ensure trailing '/' */
-    memcpy(out, root, root_len);
-    if (out[root_len-1] != '/') out[root_len++] = '/';
-    size_t base = root_len;
-    size_t pos  = root_len;
-
-    /* Reject: null bytes, backslashes, leading control chars, '..' segments */
-    size_t i = 0;
-    if (uri_plen == 0 || uri_path[0] != '/') {
-        return -1;
-    }
-    i = 1; /* skip leading '/' */
-
-    while (i < uri_plen) {
-        size_t seg_start = i;
-        while (i < uri_plen && uri_path[i] != '/') {
-            char c = uri_path[i];
-            if (c == '\0' || c == '\\') return -1;
-            if (c == '%' && i + 2 < uri_plen && uri_path[i+1] == '0' && uri_path[i+2] == '0') return -1;
-            i++;
-        }
-        size_t seg_len = i - seg_start;
-        if (seg_len == 0) { i++; continue; }
-
-        if (seg_len == 1 && uri_path[seg_start] == '.') return -1;
-        if (seg_len == 2 && uri_path[seg_start] == '.' && uri_path[seg_start+1] == '.')
-            return -1;
-        if (seg_len > 255) return -1;
-
-        if (pos > base) {
-            if (pos + 1 >= out_sz) return -1;
-            out[pos++] = '/';
-        }
-        if (pos + seg_len >= out_sz) return -1;
-        memcpy(out + pos, uri_path + seg_start, seg_len);
-        pos += seg_len;
-
-        if (i < uri_plen && uri_path[i] == '/') i++;
-    }
-
-    out[pos] = '\0';
-
-    /* lstat first: refuse symlinks at the final resolved path */
-    struct stat st;
-    if (lstat(out, &st) < 0) return -1;
-    if (S_ISLNK(st.st_mode)) return -1;
-
-    if (S_ISDIR(st.st_mode)) {
-        if (is_dir) *is_dir = true;
-        /* Open the directory with O_RDONLY | O_DIRECTORY to anchor openat */
-        int dfd = open(out, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-        if (dfd < 0) return -1;
-        for (int fi = 0; index_files[fi]; fi++) {
-            const char *idx = index_files[fi];
-            size_t il = strlen(idx);
-            /* Check name length fits in buffer (for final output path) */
-            if (pos + 1 + il >= out_sz) continue;
-            /* Open the index with O_NOFOLLOW to defeat symlinked index
-             * files; fstat() after open so TOCTOU is avoided. */
-            int ifd = openat_nofollow(dfd, idx);
-            if (ifd < 0) continue;
-            struct stat ist;
-            if (fstat(ifd, &ist) != 0) { close(ifd); continue; }
-            if (S_ISREG(ist.st_mode)) {
-                /* Build the full path for logging/mime; since the file
-                 * was opened via O_NOFOLLOW off dfd (which points at
-                 * our already-validated directory), even if a concurrent
-                 * rename happened between openat and here we already
-                 * have a validated fd. */
-                out[pos] = '/';
-                memcpy(out + pos + 1, idx, il);
-                out[pos + 1 + il] = '\0';
-                if (st_out) *st_out = ist;
-                if (is_dir) *is_dir = false;
-                close(ifd);
-                close(dfd);
-                return 0;
-            }
-            close(ifd);
-        }
-        close(dfd);
-        /* No index: return directory (handler decides 403 vs listing) */
-        out[pos] = '\0';
-        if (lstat(out, &st) < 0) return -1;
-        if (S_ISLNK(st.st_mode) || !S_ISDIR(st.st_mode)) return -1;
-        if (st_out) *st_out = st;
-        if (is_dir) *is_dir = true;
-        return 0;
-    }
-
-    if (!S_ISREG(st.st_mode)) return -1;
-    if (st_out) *st_out = st;
-    if (is_dir) *is_dir = false;
+    int fd = safe_open_path(root, uri_path, uri_plen, out, out_sz, st_out, is_dir);
+    if (fd < 0) return -1;
+    close(fd);
     return 0;
 }

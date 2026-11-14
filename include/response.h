@@ -77,8 +77,8 @@ int    response_add_file(http_response_t *r, int fd, off_t off, size_t len);
 /* Append a static C string */
 int    response_add_cstr(http_response_t *r, const char *s);
 
-/* File serving with path confinement, range, gzip, ETag/304, dir index */
-int    response_serve_file(http_response_t *r, const char *fs_path,
+/* Takes ownership of fd on every path, including HEAD and errors. */
+int    response_serve_file(http_response_t *r, int fd, const char *fs_path,
                            const struct stat *st, bool is_dir,
                            const http_request_t *req);
 

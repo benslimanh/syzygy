@@ -95,6 +95,8 @@ int http_request_parse(http_request_t *req, const char *buf, size_t len,
         return SYZYGY_RC_AGAIN;
     }
 
+    if ((size_t)(end_of_headers - begin) > SYZYGY_MAX_HEADER_SZ) return -1;
+
     const char *line0_end = find_crlf(begin, end_of_headers);
     if (!line0_end) return -1;
 
@@ -146,11 +148,24 @@ int http_request_parse(http_request_t *req, const char *buf, size_t len,
             p = le + 2; break;
         }
         const char *colon = memchr(p, ':', (size_t)(le - p));
-        if (!colon) { p = le + 2; continue; }
+        /* Never silently discard a header: downstream framing and policy
+         * checks must see exactly the same fields as the peer. */
+        if (!colon || colon == p || req->nheaders >= SYZYGY_MAX_HEADERS) return -1;
+        for (const char *k = p; k < colon; k++) {
+            unsigned char ch = (unsigned char)*k;
+            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') || strchr("!#$%&'*+-.^_`|~", ch)))
+                return -1;
+            if (ch == 0) return -1;
+        }
+        for (const char *k = colon + 1; k < le; k++) {
+            unsigned char ch = (unsigned char)*k;
+            if ((ch < 0x20 && ch != '\t') || ch == 0x7f) return -1;
+        }
         const char *vstart = colon + 1;
-        while (vstart < le && *vstart == ' ') vstart++;
+        while (vstart < le && (*vstart == ' ' || *vstart == '\t')) vstart++;
         const char *vend = le;
-        while (vend > vstart && vend[-1] == ' ') vend--;
+        while (vend > vstart && (vend[-1] == ' ' || vend[-1] == '\t')) vend--;
         if (req->nheaders < SYZYGY_MAX_HEADERS) {
             http_header_t *h = &req->headers[req->nheaders++];
             h->name = p; h->name_len = (size_t)(colon - p);
@@ -331,7 +346,7 @@ int http_request_chunked_feed(http_request_t *req, const char *buf, size_t len,
         if (req->chunk_state == 0) {
             /* find CRLF */
             const char *crlf = (const char*)memmem(buf + i, len - i, "\r\n", 2);
-            if (!crlf) { (void)SYZYGY_CHUNK_BUF; return 0; } /* need more */
+            if (!crlf) { *consumed = i; return 0; } /* need more */
             size_t sl = (size_t)(crlf - (buf + i));
             /* parse hex up to ';' or \r */
             size_t cs = 0; bool ok = true;
@@ -366,7 +381,7 @@ int http_request_chunked_feed(http_request_t *req, const char *buf, size_t len,
             }
             if (req->chunk_remaining == 0) {
                 /* Need trailing \r\n */
-                if (len - i < 2) return 0;
+                if (len - i < 2) { *consumed = i; return 0; }
                 if (buf[i] != '\r' || buf[i+1] != '\n') return -1;
                 i += 2;
                 req->chunk_state = 0;
@@ -374,7 +389,7 @@ int http_request_chunked_feed(http_request_t *req, const char *buf, size_t len,
         } else if (req->chunk_state == 2) {
             /* Trailers: skip all lines until blank \r\n */
             const char *crlf = (const char*)memmem(buf + i, len - i, "\r\n", 2);
-            if (!crlf) return 0;
+            if (!crlf) { *consumed = i; return 0; }
             if (crlf == buf + i) { i += 2; *consumed = i; *done = true; return 0; }
             i = (size_t)(crlf - buf) + 2;
         }

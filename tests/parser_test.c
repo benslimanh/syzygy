@@ -133,6 +133,78 @@ static void test_range(void)
     EXPECT(g_req.range_start == 100, "range_start=100");
 }
 
+static void test_header_limits(void)
+{
+    size_t c = 0;
+    char msg[SYZYGY_MAX_HEADER_SZ + 128];
+    size_t n = (size_t)snprintf(msg, sizeof msg, "POST / HTTP/1.1\r\n");
+    for (int i = 0; i < SYZYGY_MAX_HEADERS; i++)
+        n += (size_t)snprintf(msg + n, sizeof msg - n, "X: a\r\n");
+    n += (size_t)snprintf(msg + n, sizeof msg - n,
+                          "Content-Length: 5\r\n\r\nhello");
+    reset_req();
+    EXPECT(http_request_parse(&g_req, msg, n, &c) < 0,
+           "reject framing header hidden beyond header count limit");
+
+    n = (size_t)snprintf(msg, sizeof msg, "GET / HTTP/1.1\r\nX: ");
+    memset(msg + n, 'a', SYZYGY_MAX_HEADER_SZ);
+    n += SYZYGY_MAX_HEADER_SZ;
+    memcpy(msg + n, "\r\n\r\n", 4); n += 4;
+    reset_req();
+    EXPECT(http_request_parse(&g_req, msg, n, &c) < 0,
+           "reject complete oversized header block");
+
+    const char *bad[] = {
+        "POST / HTTP/1.1\r\nContent-Length : 5\r\n\r\n",
+        "POST / HTTP/1.1\r\n Content-Length: 5\r\n\r\n",
+        "GET / HTTP/1.1\r\nmissing-colon\r\n\r\n",
+        "GET / HTTP/1.1\r\nX: a\nb\r\n\r\n",
+        "GET / HTTP/1.1\r\n: empty\r\n\r\n",
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        reset_req();
+        EXPECT(http_request_parse(&g_req, bad[i], strlen(bad[i]), &c) < 0,
+               "reject malformed header syntax");
+    }
+    reset_req();
+    const char valid[] = "POST / HTTP/1.1\r\nContent-Length:\t0\t\r\n\r\n";
+    EXPECT(http_request_parse(&g_req, valid, sizeof valid - 1, &c) == 0 &&
+           !g_req.framing_error && g_req.has_content_length,
+           "accept tab OWS around header value");
+}
+
+static void test_open_descriptor_is_pinned(void)
+{
+    char tmp[] = "/tmp/syzygy-fd-XXXXXX";
+    char *root = mkdtemp(tmp);
+    EXPECT(root != NULL, "create path fixture");
+    if (!root) return;
+    char original[SYZYGY_PATH_MAX], moved[SYZYGY_PATH_MAX], out[SYZYGY_PATH_MAX];
+    snprintf(original, sizeof original, "%s/file", root);
+    snprintf(moved, sizeof moved, "%s/moved", root);
+    int fixture = open(original, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    EXPECT(fixture >= 0, "create confined file");
+    if (fixture < 0) { rmdir(root); return; }
+    EXPECT(write(fixture, "safe", 4) == 4, "write confined file");
+    close(fixture);
+    struct stat st;
+    bool isdir = true;
+    int fd = safe_open_path(root, "/file", 5, out, sizeof out, &st, &isdir);
+    EXPECT(fd >= 0 && !isdir && st.st_size == 4, "open validated descriptor");
+    EXPECT(rename(original, moved) == 0, "replace path after validation");
+    EXPECT(symlink("/etc/passwd", original) == 0, "install racing leaf symlink");
+    if (fd >= 0) {
+        char buf[4];
+        EXPECT(read(fd, buf, sizeof buf) == 4 && !memcmp(buf, "safe", 4),
+               "pinned descriptor does not follow replaced pathname");
+        close(fd);
+    }
+    fd = safe_open_path(root, "/file", 5, out, sizeof out, &st, &isdir);
+    EXPECT(fd < 0, "new lookup rejects replaced symlink");
+    if (fd >= 0) close(fd);
+    unlink(original); unlink(moved); rmdir(root);
+}
+
 int main(void)
 {
     fprintf(stderr, "== parser_test ==\n");
@@ -142,6 +214,8 @@ int main(void)
     test_method_head();
     test_query();
     test_range();
+    test_header_limits();
+    test_open_descriptor_is_pinned();
     fprintf(stderr, "\n%s: %d failure(s)\n", failures ? "FAIL" : "PASS", failures);
     return failures ? 1 : 0;
 }
