@@ -37,6 +37,8 @@ WARN     := -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-align \
             -Wformat-overflow=2 -Wnull-dereference -Wimplicit-fallthrough \
             -Wno-unused-parameter -Wno-unused-function
 OPT      ?= -O2 -fno-plt -fstack-protector-strong
+REPRO_FLAGS := -ffile-prefix-map=$(CURDIR)=/src
+OPT      += $(REPRO_FLAGS)
 HARDEN   := -D_FORTIFY_SOURCE=3 -fstack-clash-protection -fcf-protection=full
 ARCH_HARDEN := $(shell echo "int main(){}" | $(CC) -x c -mcet -mshstk - -o /dev/null 2>/dev/null && echo "-mcet -mshstk" || true)
 HARDEN   += $(ARCH_HARDEN)
@@ -142,51 +144,15 @@ static: clean $(BIN)
 
 # ---------- Reproducibility ----------
 repro:
-	@echo "==> Running Build 1..."
-	@SOURCE_DATE_EPOCH=1700000000 $(MAKE) clean all >/dev/null 2>&1; \
-	T1=$$(sha256sum $(BIN) 2>/dev/null | awk '{print $$1}'); \
-	sleep 1; \
-	echo "==> Running Build 2..."; \
-	SOURCE_DATE_EPOCH=1700000000 $(MAKE) clean all >/dev/null 2>&1; \
-	T2=$$(sha256sum $(BIN) 2>/dev/null | awk '{print $$1}'); \
-	echo "build1: $$T1"; \
-	echo "build2: $$T2"; \
-	if [ -z "$$T1" ] || [ -z "$$T2" ]; then \
-		echo "REPRODUCIBLE: FAIL (Build process failed)"; \
-		exit 1; \
-	elif [ "$$T1" = "$$T2" ]; then \
-		echo "REPRODUCIBLE: OK"; \
-	else \
-		echo "REPRODUCIBLE: FAIL (Hashes mismatch)"; \
-		exit 1; \
-	fi
+	bash scripts/ci/repro.sh
 
-# ---------- SBOM (SPDX) ----------
-sbom:
-	@echo "Generating SPDX SBOM to syzygy.spdx ..."
-	@./scripts/generate_sbom.sh > syzygy.spdx 2>/dev/null || \
-	{ echo "SPDXVersion: SPDX-2.3" > syzygy.spdx; \
-	  echo "DataLicense: CC0-1.0" >> syzygy.spdx; \
-	  echo "SPDXID: SPDXRef-DOCUMENT" >> syzygy.spdx; \
-	  echo "PackageName: syzygy" >> syzygy.spdx; \
-	  echo "PackageVersion: $(shell grep -oP 'SYZYGY_VERSION\s+"\K[^"]+' include/common.h)" >> syzygy.spdx; \
-	  echo "PackageLicenseConcluded: MIT" >> syzygy.spdx; \
-	  echo "## auto-generated stub" >> syzygy.spdx; \
-	  echo "SBOM stub written to syzygy.spdx"; }
+# ---------- SBOM: a real Syft inventory, never a success-shaped stub ----------
+sbom: $(BIN)
+	bash scripts/generate_sbom.sh > syzygy.spdx.json
 
-# ---------- Hardening verification ----------
+# ---------- Fail-closed ELF hardening verification ----------
 hardening-check: $(BIN)
-	@echo "== ELF hardening checks =="
-	@type hardening-check >/dev/null 2>&1 && hardening-check $(BIN) || { \
-	  echo "(hardening-check not installed; running manual checks)"; \
-	  file $(BIN); \
-	  readelf -d $(BIN) | grep -E '(BIND_NOW|FLAGS_1|RELRO)' ; \
-	  readelf -h $(BIN) | grep 'Type:'; \
-	  echo "NX: "; readelf -l $(BIN) | grep -E 'GNU_STACK.*RW' && echo "NX ok (no eXec)" || echo "NX?"; \
-	}
-	@echo "== GOT-PLT relro / PIE / stack-protector symbols =="
-	@readelf -sW $(BIN) | grep -E '(__stack_chk_fail|_FORTIFY)' || true
-	@nm -D $(BIN) | grep -E ' U (strcpy|strcat|sprintf|gets)$$' && echo "FAIL: unsafe functions linked" || echo "OK: no unsafe str*/sprintf/gets linked"
+	bash scripts/ci/hardening.sh $(BIN)
 
 # ---------- Demo cert ----------
 certs/cert.pem certs/key.pem: certs
@@ -208,7 +174,7 @@ run-demo: certs/cert.pem all
 	./$(BIN) -p 8080 -T 8443 -C certs/cert.pem -K certs/key.pem -r ./www -w 0
 
 clean:
-	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO)
+	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so modules/proxy_wasm.so tests/parser_test.d
 
 PREFIX  ?= /usr/local
 BINDIR  ?= $(PREFIX)/bin

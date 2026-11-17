@@ -62,3 +62,10 @@ coverage/
 # Python test caches and local environments
 __pycache__/
 .venv/
+
+# CI / release tooling and generated evidence
+.tools/
+reports/
+release-artifacts/
+syzygy.spdx.json
+*.oci.tar
