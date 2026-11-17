@@ -1,5 +1,7 @@
 # deps.lock - pinned dependency set for syzygy 0.1.0
-# Consumed by dist/build.sh; a mismatch aborts the build unless --allow-drift.
+# scripts/ci/build.sh enforces mbedtls_commit. Native toolchain/library
+# versions below are reference metadata; exact build versions are recorded
+# in release build-info.json, not enforced across different distributions.
 # Refresh deliberately, with a CHANGELOG entry, never implicitly.
 
 # Vendored TLS (git submodule of github.com/Mbed-TLS/mbedtls, tag v3.6.7)
