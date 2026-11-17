@@ -12,7 +12,8 @@ grep -q BIND_NOW <<< "$dynamic"
 stack=$(grep GNU_STACK <<< "$program")
 [[ "$stack" == *' RW '* && "$stack" != *RWE* ]]
 grep -q '__stack_chk_fail' <<< "$symbols"
-if nm -D "$binary" | grep -Eq ' U (strcpy|strcat|sprintf|gets)(@|$)'; then
+dynamic_symbols=$(nm -D "$binary")
+if grep -Eq ' U (strcpy|strcat|sprintf|gets)(@|$)' <<< "$dynamic_symbols"; then
     echo 'Unsafe string function linked' >&2; exit 1
 fi
 echo 'ELF checks passed: PIE, RELRO/NOW, NX, stack protector, no banned symbols'

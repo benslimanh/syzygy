@@ -136,12 +136,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y podman
+          python3 scripts/ci/tools.py trivy
       - name: Build OCI image and exercise non-root runtime
         run: |
           podman build -f Containerfile --build-arg "VCS_REF=$GITHUB_SHA" \
             --build-arg "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" \
             -t localhost/syzygy:ci .
           bash scripts/ops/podman-smoke.sh localhost/syzygy:ci
+          podman save --format docker-archive --output /tmp/syzygy-image.tar localhost/syzygy:ci
+          bash scripts/ci/scan-image.sh /tmp/syzygy-image.tar
 
   security:
     runs-on: ubuntu-24.04

@@ -17,7 +17,7 @@ name="syzygy-$version-linux-amd64"
 mkdir -p "$stage/$name/bin" "$stage/$name/www"
 install -m755 syzygy "$stage/$name/bin/syzygy"
 cp -a www/. "$stage/$name/www/"
-cp LICENSE README.md "$stage/$name/"
+cp LICENSE README.md deps.lock "$stage/$name/"
 python3 - "$stage/$name/build-info.json" <<'PY'
 import json, os, platform, subprocess, sys
 from pathlib import Path

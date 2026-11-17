@@ -187,6 +187,75 @@ class ChartContract(unittest.TestCase):
         self.assertIn('/certs/tls.key', rendered)
 
 
+class ScanCoverage(unittest.TestCase):
+    def scan(self, document, fail=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            executable = base / 'trivy'
+            executable.write_text('#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n'
+                                  + f'Path(sys.argv[sys.argv.index("--output")+1]).write_text({json.dumps(json.dumps(document))})\n'
+                                  + f'raise SystemExit({1 if fail else 0})\n')
+            executable.chmod(0o755)
+            return subprocess.run(['bash', str(ROOT / 'scripts/ci/scan-image.sh'),
+                                   'fixture.tar', str(base / 'report.json')],
+                                  env=dict(os.environ, PATH=str(base) + ':' + os.environ['PATH']),
+                                  capture_output=True).returncode
+
+    def test_empty_scan_is_not_clean(self):
+        self.assertNotEqual(self.scan({'Metadata': {'OS': {'Family': 'none'}}, 'Results': []}), 0)
+
+    def test_missing_library_inventory_is_not_clean(self):
+        self.assertNotEqual(self.scan({'Metadata': {'OS': {'Family': 'debian'}}, 'Results': []}), 0)
+
+    def test_covered_scan_accepted(self):
+        document = {'Metadata': {'OS': {'Family': 'debian'}},
+                    'Results': [{'Packages': [{'Name': n} for n in ['libc6', 'libnghttp2-14', 'zlib1g']]}]}
+        self.assertEqual(self.scan(document), 0)
+        self.assertNotEqual(self.scan(document, fail=True), 0)
+
+
+class VendoredSbom(unittest.TestCase):
+    def test_static_component_is_explicit_and_not_duplicated(self):
+        spec = importlib.util.spec_from_file_location('sbom', ROOT / 'scripts/release/annotate-sbom.py')
+        sbom = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sbom)
+        document = {'packages': [{'name': 'image', 'SPDXID': 'SPDXRef-image'}],
+                    'relationships': [{'spdxElementId': 'SPDXRef-DOCUMENT',
+                                       'relationshipType': 'DESCRIBES',
+                                       'relatedSpdxElement': 'SPDXRef-image'}]}
+        result = sbom.annotate(document, '3.6.7', 'a' * 40)
+        package = result['packages'][-1]
+        self.assertEqual(package['name'], 'mbedtls')
+        self.assertIn('Manifest-derived', package['sourceInfo'])
+        with self.assertRaises(ValueError):
+            sbom.annotate(result, '3.6.7', 'a' * 40)
+
+
+class ChecksumManifest(unittest.TestCase):
+    def test_stable_manifest_excludes_itself_and_signature(self):
+        spec = importlib.util.spec_from_file_location('checksums', ROOT / 'scripts/release/checksums.py')
+        checksums = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checksums)
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / 'binary.tar.gz').write_bytes(b'archive')
+            checksums.write_checksums(base)
+            first = (base / 'SHA256SUMS').read_text()
+            (base / 'SHA256SUMS.sigstore.json').write_text('signature')
+            checksums.write_checksums(base)
+            self.assertEqual((base / 'SHA256SUMS').read_text(), first)
+            self.assertIn(hashlib.sha256(b'archive').hexdigest(), first)
+
+    def test_symlink_asset_rejected(self):
+        spec = importlib.util.spec_from_file_location('checksums', ROOT / 'scripts/release/checksums.py')
+        checksums = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checksums)
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'secret').symlink_to('/etc/passwd')
+            with self.assertRaises(ValueError):
+                checksums.write_checksums(tmp)
+
+
 class ReleaseValidation(unittest.TestCase):
     def test_invalid_tags_rejected(self):
         for tag in ['latest', 'v1.2', 'v1.2.3;echo bad', '../v1.2.3']:
