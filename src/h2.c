@@ -394,8 +394,10 @@ static int on_frame_recv(nghttp2_session *s, const nghttp2_frame *frame, void *u
     nv_add(hdrs, &nh, "content-length", clb);
     nv_add(hdrs, &nh, "server", SYZYGY_SERVER_NAME);
     if (etag[0]) nv_add(hdrs, &nh, "etag", etag);
+    /* Header views must remain alive until nghttp2_submit_response copies
+     * them below; block-scoped storage here was a use-after-scope. */
+    char cr[96];
     if (have_range && resp_status == HTTP_206) {
-        char cr[96];
         snprintf(cr, sizeof cr, "bytes %zu-%zu/%zu", range_start, range_end, file_total);
         nv_add(hdrs, &nh, "content-range", cr);
         nv_add(hdrs, &nh, "accept-ranges", "bytes");
