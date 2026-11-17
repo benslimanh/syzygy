@@ -1,0 +1,126 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a version-matching tag on main
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$GITHUB_REF" == refs/tags/* ]]
+          bash scripts/release/verify-tag.sh "$RELEASE_TAG"
+
+  quality:
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    if: vars.RELEASE_ENABLED == 'true'
+    needs: [gate, quality]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    # Configure required reviewers and tag-only deployment rules on GitHub.
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install release tools and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman build-essential pkg-config libnghttp2-dev libssl-dev zlib1g-dev
+          python3 scripts/ci/tools.py syft cosign trivy helm
+      - name: Build and package binary and chart
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          bash scripts/ci/build.sh
+          bash scripts/release/package.sh "$RELEASE_TAG"
+          helm package helm/syzygy --destination release-artifacts \
+            --version "${RELEASE_TAG#v}" --app-version "${RELEASE_TAG#v}"
+          syft scan file:./syzygy -o spdx-json=release-artifacts/binary.spdx.json
+      - name: Build and scan OCI image before publishing
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$RELEASE_TAG"
+          podman build -f Containerfile --build-arg "VCS_REF=$GITHUB_SHA" \
+            --build-arg "VERSION=$RELEASE_TAG" \
+            --build-arg "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" -t "$image" .
+          bash scripts/ops/podman-smoke.sh "$image"
+          podman save --format oci-archive --output /tmp/syzygy.oci.tar "$image"
+          syft scan oci-archive:/tmp/syzygy.oci.tar -o spdx-json=release-artifacts/image.spdx.json
+          trivy image --input /tmp/syzygy.oci.tar --scanners vuln \
+            --exit-code 1 --severity HIGH,CRITICAL
+      - name: Publish digest and sign OCI image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$RELEASE_TAG"
+          DOCKER_CONFIG=$(mktemp -d)
+          export DOCKER_CONFIG
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GH_TOKEN" | podman login --authfile "$DOCKER_CONFIG/config.json" ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          podman push --digestfile /tmp/image-digest "$image" "docker://$image"
+          digest=$(cat /tmp/image-digest)
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          reference="ghcr.io/${GITHUB_REPOSITORY,,}@$digest"
+          printf '%s\n' "$reference" > release-artifacts/image-reference.txt
+          cosign sign --yes "$reference"
+          cosign attest --yes --type spdxjson --predicate release-artifacts/image.spdx.json "$reference"
+          cosign verify --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$reference" >/dev/null
+      - name: Sign artifact checksums
+        run: |
+          python3 scripts/release/checksums.py release-artifacts
+          cosign sign-blob --yes --bundle release-artifacts/SHA256SUMS.sigstore.json release-artifacts/SHA256SUMS
+          cosign verify-blob --bundle release-artifacts/SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com release-artifacts/SHA256SUMS
+      - name: Attest release artifacts using GitHub OIDC
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: release-artifacts/*
+      - name: Create draft release with all evidence
+        run: |
+          gh release create "$RELEASE_TAG" release-artifacts/* --verify-tag --draft --generate-notes --title "syzygy $RELEASE_TAG"
+      - name: Publish completed release
+        run: gh release edit "$RELEASE_TAG" --draft=false
+      - name: Preserve evidence if publication fails
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-failure-evidence
+          path: release-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
