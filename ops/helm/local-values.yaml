@@ -1,0 +1,15 @@
+# Local development only: HTTP on ClusterIP, no TLS Secret or metrics-server
+# required. Do not expose plaintext directly to the public Internet.
+replicaCount: 1
+autoscaling:
+  enabled: false
+tls:
+  enabled: false
+workers: 1
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi

@@ -4,37 +4,52 @@ metadata:
   name: {{ include "syzygy.fullname" . }}
   labels: {{- include "syzygy.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
-  selector: {matchLabels: {{- include "syzygy.selectorLabels" . | nindent 6 }}}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "syzygy.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels: {{- include "syzygy.selectorLabels" . | nindent 8 }}
-      annotations:
-        seccomp.security.alpha.kubernetes.io/pod: runtime/default
     spec:
       automountServiceAccountToken: false
       securityContext: {{- .Values.podSecurityContext | toYaml | nindent 8 }}
       containers:
       - name: syzygy
+        {{- if .Values.image.digest }}
+        image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+        {{- else }}
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        {{- end }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        args: ["-p","8080","-T","8443","-C","/certs/cert.pem","-K","/certs/key.pem","-r","/www","-w","0"]
+        {{- if .Values.tls.enabled }}
+        args: ["-p","8080","-T","8443","-C","/certs/tls.crt","-K","/certs/tls.key","-r","/www","-w",{{ .Values.workers | quote }}]
+        {{- else }}
+        args: ["-p","8080","-T","0","-r","/www","-w",{{ .Values.workers | quote }}]
+        {{- end }}
         ports:
         - {name: http,  containerPort: 8080, protocol: TCP}
+        {{- if .Values.tls.enabled }}
         - {name: https, containerPort: 8443, protocol: TCP}
+        {{- end }}
         readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2}
         livenessProbe:  {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
         resources: {{- .Values.resources | toYaml | nindent 10 }}
         securityContext: {{- .Values.securityContext | toYaml | nindent 10 }}
         volumeMounts:
+        {{- if .Values.tls.enabled }}
         - {name: certs, mountPath: /certs, readOnly: true}
+        {{- end }}
         - {name: tmp,   mountPath: /tmp}
         {{- if .Values.www.configMap }}
         - {name: www, mountPath: /www, readOnly: true}
         {{- end }}
       volumes:
+      {{- if .Values.tls.enabled }}
       - name: certs
         secret: {secretName: {{ .Values.tls.secretName }}}
+      {{- end }}
       - name: tmp
         emptyDir: {medium: Memory, sizeLimit: 8Mi}
       {{- if .Values.www.configMap }}

@@ -174,7 +174,7 @@ run-demo: certs/cert.pem all
 	./$(BIN) -p 8080 -T 8443 -C certs/cert.pem -K certs/key.pem -r ./www -w 0
 
 clean:
-	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so modules/proxy_wasm.so tests/parser_test.d
+	rm -f $(OBJS) $(DEPS) $(BIN) $(TEST_BIN) $(FUZZ_BIN) $(MODULE_SO) modules/modsec_stub.so modules/extauthz_opa.so modules/proxy_wasm.so tests/parser_test.o tests/parser_test.d
 
 PREFIX  ?= /usr/local
 BINDIR  ?= $(PREFIX)/bin

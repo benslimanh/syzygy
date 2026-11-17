@@ -1,9 +1,11 @@
 replicaCount: 3
 
 image:
-  repository: ghcr.io/example/syzygy
+  repository: ghcr.io/benslimanh/syzygy
   pullPolicy: IfNotPresent
   tag: ""
+  # Prefer an immutable digest for releases; overrides tag when set.
+  digest: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -39,7 +41,10 @@ securityContext:
   runAsNonRoot: true
   privileged: false
 
+workers: 2
+
 tls:
+  enabled: true
   secretName: syzygy-tls
 
 www:

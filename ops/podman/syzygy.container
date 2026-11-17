@@ -1,0 +1,23 @@
+# Optional rootless Quadlet. Copy to ~/.config/containers/systemd/ only after
+# replacing the example image with an image@sha256 digest verified by cosign.
+[Unit]
+Description=Syzygy local development server
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/syzygy:dev
+ContainerName=syzygy-dev
+PublishPort=127.0.0.1:8080:8080
+ReadOnly=true
+DropCapability=all
+NoNewPrivileges=true
+User=65532:65532
+PodmanArgs=--pids-limit=128 --memory=256m --cpus=1
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

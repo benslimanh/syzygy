@@ -8,4 +8,6 @@ spec:
   selector: {{- include "syzygy.selectorLabels" . | nindent 4 }}
   ports:
   - {name: http,  port: {{ .Values.service.http }},  targetPort: http,  protocol: TCP}
+  {{- if .Values.tls.enabled }}
   - {name: https, port: {{ .Values.service.https }}, targetPort: https, protocol: TCP}
+  {{- end }}

@@ -1,7 +1,7 @@
 
 # Build artifacts
 
-syzygy
+/syzygy
 
 *.o
 
