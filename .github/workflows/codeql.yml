@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: read
+  contents: read
+  security-events: write
 
 concurrency:
   group: codeql-${{ github.ref }}
