@@ -11,8 +11,6 @@ on:
 
 permissions:
   contents: read
-  contents: read
-  security-events: write
 
 concurrency:
   group: codeql-${{ github.ref }}
@@ -23,6 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
