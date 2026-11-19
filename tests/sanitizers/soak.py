@@ -52,7 +52,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BIN = os.path.join(ROOT, "syzygy")
+BIN = os.environ.get("SYZYGY_BIN", os.path.join(ROOT, "syzygy"))
 CERT = os.path.join(ROOT, "certs", "cert.pem")
 KEY = os.path.join(ROOT, "certs", "key.pem")
 WWW = os.path.join(ROOT, "tests", "compat", "fixtures")

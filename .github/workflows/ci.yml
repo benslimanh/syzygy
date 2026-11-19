@@ -1,91 +1,164 @@
 name: ci
 
 on:
-  push: { branches: [main] }
-  pull_request: { branches: [main] }
-  workflow_dispatch: {}
+  push:
+    branches: [main, syzops, review]
+  pull_request:
+    branches: [main, syzops]
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-test:
-    name: Build & unit test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    env:
+      CC: ${{ matrix.compiler }}
+      JOBS: '2'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-      
-      - name: Install deps
+          persist-credentials: false
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential zlib1g-dev libnghttp2-dev \
-               libssl-dev devscripts cppcheck nghttp2-client curl python3-venv
-
-      - name: Build mbedTLS
-        run: make -C mbedtls CFLAGS="-O2 -fPIC" lib
-
-      - name: Build
-        run: make -j$(nproc)
-
-      - name: Unit tests
-        run: make test
-
-      - name: Protocol and security regressions
-        run: |
-          make certs modules/jwt_auth.so
+          sudo apt-get install -y build-essential clang pkg-config binutils \
+            zlib1g-dev libnghttp2-dev libssl-dev libmodsecurity-dev \
+            nghttp2-client curl python3-venv iproute2
           python3 -m venv .venv
-          .venv/bin/pip install 'h2>=4.2,<5'
-          .venv/bin/python tests/compat/run_all.py
-          .venv/bin/python tests/regression/track1.py
-          .venv/bin/python tests/regression/path_confinement.py
-          .venv/bin/python tests/regression/module_protocol.py
-
-      - name: Hardening check
-        run: make hardening-check
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
+          .venv/bin/pip install -r tests/requirements.lock
+      - name: Build locked TLS and application
+        run: bash scripts/ci/build.sh
+      - name: Unit, protocol, module, and security tests
+        run: bash scripts/ci/test.sh
+      - name: Retain test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: syzygy
-          path: |
-            syzygy
+          name: test-reports-${{ matrix.compiler }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 14
 
-  repro:
-    name: Reproducibility gate
-    runs-on: ubuntu-latest
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-          
-      - name: Install deps
+          persist-credentials: false
+      - name: Install dependencies
         run: |
-          sudo apt-get update 
-          sudo apt-get install -y build-essential zlib1g-dev libnghttp2-dev libssl-dev
-
-      - name: Build mbedTLS
-        run: make -C mbedtls CFLAGS="-O2 -fPIC" lib
-
-      - name: repro
-        run: make repro
-
-  module-build:
-    name: Build sample module
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang pkg-config libnghttp2-dev libssl-dev zlib1g-dev python3-venv
+          python3 -m venv .venv
+          .venv/bin/pip install -r tests/requirements.lock
+      - run: bash scripts/ci/build.sh && make certs
+      - name: Bounded ASan/UBSan fuzzing and fault-injection soak
+        run: bash scripts/ci/sanitizers.sh
+      - name: Retain sanitizer logs and crash inputs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          submodules: recursive 
-          
-      - name: Install deps
-        run: |
-          sudo apt-get update 
-          sudo apt-get install -y build-essential libnghttp2-dev libmodsecurity-dev
-          
-      - name: Build mbedTLS
-        run: make -C mbedtls CFLAGS="-O2 -fPIC" lib
+          name: sanitizer-evidence
+          path: |
+            reports/fuzz-artifacts/
+            /tmp/syzygy-soak/
+          if-no-files-found: warn
 
-      - name: Build Modules
-        run: make mod
+  reproducibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libnghttp2-dev libssl-dev zlib1g-dev
+      - name: Compare two complete clean builds in different paths
+        run: bash scripts/ci/repro.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reproducibility
+          path: reports/repro.sha256
+          if-no-files-found: error
+
+  tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install checksum-locked tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          python3 scripts/ci/tools.py actionlint helm
+      - name: Workflow, shell, Helm and automation tests
+        run: |
+          actionlint
+          shellcheck scripts/ci/*.sh scripts/release/*.sh scripts/ops/*.sh
+          helm lint helm/syzygy --strict
+          helm template syzygy helm/syzygy -f ops/helm/local-values.yaml > /tmp/local.yaml
+          python3 -m unittest discover -s tests/ops -v
+          cmp Containerfile Dockerfile
+
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install rootless Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          python3 scripts/ci/tools.py trivy
+      - name: Build OCI image and exercise non-root runtime
+        run: |
+          podman build -f Containerfile --build-arg "VCS_REF=$GITHUB_SHA" \
+            --build-arg "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" \
+            -t localhost/syzygy:ci .
+          bash scripts/ops/podman-smoke.sh localhost/syzygy:ci
+          podman save --format docker-archive --output /tmp/syzygy-image.tar localhost/syzygy:ci
+          bash scripts/ci/scan-image.sh /tmp/syzygy-image.tar
+
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install locked security tools
+        run: python3 scripts/ci/tools.py gitleaks trivy
+      - name: Scan Git history for secrets
+        run: gitleaks git --redact --log-opts=--all .
+      - name: Scan container and chart configuration (phase 01 scope)
+        run: |
+          trivy config --exit-code 1 --severity HIGH,CRITICAL Containerfile
+          trivy config --exit-code 1 --severity HIGH,CRITICAL helm/syzygy

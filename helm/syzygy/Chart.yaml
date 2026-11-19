@@ -5,8 +5,8 @@ type: application
 version: 0.1.0
 appVersion: "0.1.0"
 keywords: [http, http2, hardened, webserver]
-home: https://github.com/example/syzygy
+home: https://github.com/benslimanh/syzygy
 sources:
-  - https://github.com/example/syzygy
+  - https://github.com/benslimanh/syzygy
 maintainers:
   - name: syzygy maintainers

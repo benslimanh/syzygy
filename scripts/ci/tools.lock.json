@@ -1,0 +1,44 @@
+{
+  "actionlint": {
+    "version": "v1.7.12",
+    "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+    "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+    "member": "actionlint"
+  },
+  "syft": {
+    "version": "v1.57.1",
+    "url": "https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_linux_amd64.tar.gz",
+    "sha256": "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c",
+    "member": "syft"
+  },
+  "cosign": {
+    "version": "v3.1.4",
+    "url": "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64",
+    "sha256": "424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa",
+    "member": ""
+  },
+  "gitleaks": {
+    "version": "v8.30.1",
+    "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+    "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+    "member": "gitleaks"
+  },
+  "trivy": {
+    "version": "v0.76.2",
+    "url": "https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-64bit.tar.gz",
+    "sha256": "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf",
+    "member": "trivy"
+  },
+  "helm": {
+    "version": "v3.19.0",
+    "url": "https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz",
+    "sha256": "a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496",
+    "member": "linux-amd64/helm"
+  },
+  "kubectl": {
+    "version": "v1.34.1",
+    "url": "https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl",
+    "sha256": "7721f265e18709862655affba5343e85e1980639395d5754473dafaadcaa69e3",
+    "member": ""
+  }
+}

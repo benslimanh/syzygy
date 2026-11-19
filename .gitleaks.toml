@@ -1,7 +1,7 @@
-title = "syzygy gitleaks config"
+title = "syzygy secret detection"
+[extend]
+useDefault = true
+# Do not broadly exempt tests: production credentials can leak there too.
 [allowlist]
-  description = "False positives and test certs"
-  paths = [
-    '''certs/''',
-    '''tests/''',
-  ]
+description = "Generated local tool/environment directories only"
+paths = ['''^\.tools/''', '''^\.venv/''', '''^reports/''']
